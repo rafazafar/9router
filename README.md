@@ -1394,6 +1394,18 @@ Authorization: Bearer your-api-key
 → Returns all models + combos in OpenAI format
 ```
 
+### Model Aliases
+
+Use **Dashboard → Model Aliases** to map any exact client-facing model ID to a concrete 9Router route. Provider-qualified aliases are supported, for example:
+
+```text
+openai/gpt-5.6-sol → cx/gpt-5.6-sol
+```
+
+Aliases resolve before provider routing and are returned by `GET /v1/models`. Aliases that shadow a registered provider route require explicit confirmation. Alias chains are supported; cycles and broken chain deletion are rejected.
+
+Canonical IDs also work automatically when exactly one connected provider advertises that model and the canonical provider is not connected. For example, with Codex connected but no OpenAI API-key connection, `openai/gpt-5.6-sol` falls back to `cx/gpt-5.6-sol`. Explicit dashboard aliases always take precedence.
+
 ## 📧 Support
 
 - **Website**: [9router.com](https://9router.com)

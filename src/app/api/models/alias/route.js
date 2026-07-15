@@ -1,13 +1,23 @@
 import { NextResponse } from "next/server";
-import { getModelAliases, setModelAlias, deleteModelAlias } from "@/models";
+import { getModelAliases, getProviderConnections, setModelAliasValidated, deleteModelAliasValidated } from "@/models";
+import { getCanonicalAliasSuggestions, getDependentAliases, validateModelAlias } from "open-sse/services/modelAliases.js";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/models/alias - Get all aliases
 export async function GET() {
   try {
-    const aliases = await getModelAliases();
-    return NextResponse.json({ aliases });
+    const [aliases, connections] = await Promise.all([
+      getModelAliases(),
+      getProviderConnections(),
+    ]);
+    const connectedProviderIds = new Set(
+      connections.filter((connection) => connection.isActive !== false).map((connection) => connection.provider),
+    );
+    return NextResponse.json({
+      aliases,
+      suggestions: getCanonicalAliasSuggestions(aliases, { providerIds: connectedProviderIds }),
+    });
   } catch (error) {
     console.log("Error fetching aliases:", error);
     return NextResponse.json({ error: "Failed to fetch aliases" }, { status: 500 });
@@ -18,18 +28,28 @@ export async function GET() {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { model, alias } = body;
+    const { model, alias, override = false } = body;
 
     if (!model || !alias) {
       return NextResponse.json({ error: "Model and alias required" }, { status: 400 });
     }
 
-    await setModelAlias(alias, model);
+    const validated = await setModelAliasValidated(alias, model, (aliases) => (
+      validateModelAlias({
+        alias,
+        target: model,
+        aliases,
+        allowOverride: override === true,
+      })
+    ));
 
-    return NextResponse.json({ success: true, model, alias });
+    return NextResponse.json({ success: true, model: validated.target, alias: validated.alias });
   } catch (error) {
-    console.log("Error updating alias:", error);
-    return NextResponse.json({ error: "Failed to update alias" }, { status: 500 });
+    if (!error.status || error.status >= 500) console.log("Error updating alias:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to update alias", code: error.code },
+      { status: error.status || 500 },
+    );
   }
 }
 
@@ -43,11 +63,23 @@ export async function DELETE(request) {
       return NextResponse.json({ error: "Alias required" }, { status: 400 });
     }
 
-    await deleteModelAlias(alias);
+    await deleteModelAliasValidated(alias, (aliases) => {
+      const dependents = getDependentAliases(alias, aliases);
+      if (dependents.length > 0) {
+        const error = new Error(`Alias is used by: ${dependents.join(", ")}`);
+        error.code = "MODEL_ALIAS_HAS_DEPENDENTS";
+        error.status = 409;
+        error.dependents = dependents;
+        throw error;
+      }
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.log("Error deleting alias:", error);
-    return NextResponse.json({ error: "Failed to delete alias" }, { status: 500 });
+    if (!error.status || error.status >= 500) console.log("Error deleting alias:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to delete alias", code: error.code, dependents: error.dependents },
+      { status: error.status || 500 },
+    );
   }
 }

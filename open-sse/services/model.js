@@ -24,6 +24,72 @@ export function resolveProviderAlias(aliasOrId) {
   return ALIAS_TO_PROVIDER_ID[aliasOrId] || aliasOrId;
 }
 
+export class ModelAliasResolutionError extends Error {
+  constructor(message, code, chain = []) {
+    super(message);
+    this.name = "ModelAliasResolutionError";
+    this.code = code;
+    this.chain = chain;
+  }
+}
+
+function aliasTargetToString(target) {
+  if (typeof target === "string") return target.trim();
+  if (target && typeof target === "object" && target.provider && target.model) {
+    return `${target.provider}/${target.model}`;
+  }
+  return "";
+}
+
+/**
+ * Resolve exact aliases, including aliases that contain a provider prefix.
+ * Aliases are deliberately exact: no suffix, wildcard, or fuzzy matching.
+ */
+export function resolveModelAliasString(modelStr, aliases, { maxDepth = 10 } = {}) {
+  const start = typeof modelStr === "string" ? modelStr.trim() : modelStr;
+  if (!start || !aliases || typeof aliases !== "object") {
+    return { model: start, resolved: false, chain: start ? [start] : [] };
+  }
+
+  let current = start;
+  const chain = [current];
+  const seen = new Set();
+  let depth = 0;
+
+  while (Object.prototype.hasOwnProperty.call(aliases, current)) {
+    if (seen.has(current)) {
+      throw new ModelAliasResolutionError(
+        `Model alias cycle detected: ${chain.join(" -> ")}`,
+        "MODEL_ALIAS_CYCLE",
+        chain,
+      );
+    }
+    if (depth >= maxDepth) {
+      throw new ModelAliasResolutionError(
+        `Model alias resolution exceeded maximum depth (${maxDepth}): ${chain.join(" -> ")}`,
+        "MODEL_ALIAS_MAX_DEPTH",
+        chain,
+      );
+    }
+
+    seen.add(current);
+    const target = aliasTargetToString(aliases[current]);
+    if (!target) {
+      throw new ModelAliasResolutionError(
+        `Model alias "${current}" has an invalid target`,
+        "MODEL_ALIAS_INVALID_TARGET",
+        chain,
+      );
+    }
+
+    current = target;
+    chain.push(current);
+    depth += 1;
+  }
+
+  return { model: current, resolved: current !== start, chain };
+}
+
 /**
  * Parse model string: "alias/model" or "provider/model" or just alias
  */
@@ -55,27 +121,16 @@ export function parseModel(modelStr) {
  * Format: { "alias": "provider/model" }
  */
 export function resolveModelAliasFromMap(alias, aliases) {
-  if (!aliases) return null;
-
-  // Check if alias exists
-  const resolved = aliases[alias];
-  if (!resolved) return null;
+  const resolved = resolveModelAliasString(alias, aliases);
+  if (!resolved.resolved) return null;
 
   // Resolved value is "provider/model" format
-  if (typeof resolved === "string" && resolved.includes("/")) {
-    const firstSlash = resolved.indexOf("/");
-    const providerOrAlias = resolved.slice(0, firstSlash);
+  if (typeof resolved.model === "string" && resolved.model.includes("/")) {
+    const firstSlash = resolved.model.indexOf("/");
+    const providerOrAlias = resolved.model.slice(0, firstSlash);
     return {
       provider: resolveProviderAlias(providerOrAlias),
-      model: resolved.slice(firstSlash + 1),
-    };
-  }
-
-  // Or object { provider, model }
-  if (typeof resolved === "object" && resolved.provider && resolved.model) {
-    return {
-      provider: resolveProviderAlias(resolved.provider),
-      model: resolved.model,
+      model: resolved.model.slice(firstSlash + 1),
     };
   }
 
@@ -88,25 +143,18 @@ export function resolveModelAliasFromMap(alias, aliases) {
  * @param {object|function} aliasesOrGetter - Aliases object or async function to get aliases
  */
 export async function getModelInfoCore(modelStr, aliasesOrGetter) {
-  const parsed = parseModel(modelStr);
+  const aliases =
+    typeof aliasesOrGetter === "function"
+      ? await aliasesOrGetter()
+      : aliasesOrGetter;
+  const resolved = resolveModelAliasString(modelStr, aliases);
+  const parsed = parseModel(resolved.model);
 
   if (!parsed.isAlias) {
     return {
       provider: parsed.provider,
       model: parsed.model,
     };
-  }
-
-  // Get aliases (from object or function)
-  const aliases =
-    typeof aliasesOrGetter === "function"
-      ? await aliasesOrGetter()
-      : aliasesOrGetter;
-
-  // Resolve alias
-  const resolved = resolveModelAliasFromMap(parsed.model, aliases);
-  if (resolved) {
-    return resolved;
   }
 
   // Fallback: infer provider from model name prefix

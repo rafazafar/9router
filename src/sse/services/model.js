@@ -1,6 +1,7 @@
 // Re-export from open-sse with localDb integration
-import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
-import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
+import { getModelAliases, getComboByName, getProviderConnections, getProviderNodes } from "@/lib/localDb";
+import { parseModel as parseModelCore, resolveModelAliasFromMap, resolveModelAliasString, getModelInfoCore } from "open-sse/services/model.js";
+import { getCanonicalFallbackAliases } from "open-sse/services/modelAliases.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
@@ -28,15 +29,39 @@ export function parseModel(modelStr) {
  * Resolve model alias from localDb
  */
 export async function resolveModelAlias(alias) {
-  const aliases = await getModelAliases();
-  return resolveModelAliasFromMap(alias, aliases);
+  const [aliases, connections] = await Promise.all([getModelAliases(), getProviderConnections()]);
+  const providerIds = new Set(
+    connections.filter((connection) => connection.isActive !== false).map((connection) => connection.provider),
+  );
+  const fallbacks = getCanonicalFallbackAliases({ providerIds, aliases });
+  return resolveModelAliasFromMap(alias, { ...fallbacks, ...aliases });
 }
 
 /**
  * Get full model info (parse or resolve)
  */
 export async function getModelInfo(modelStr) {
-  const parsed = parseModel(modelStr);
+  const [storedAliases, connections] = await Promise.all([getModelAliases(), getProviderConnections()]);
+  const providerIds = new Set(
+    connections.filter((connection) => connection.isActive !== false).map((connection) => connection.provider),
+  );
+  const aliases = {
+    ...getCanonicalFallbackAliases({ providerIds, aliases: storedAliases }),
+    ...storedAliases,
+  };
+
+  // Bare combo names retain precedence over bare aliases for backwards compatibility.
+  if (!modelStr.includes("/")) {
+    const combo = await getComboByName(modelStr);
+    if (combo) {
+      return { provider: null, model: modelStr };
+    }
+  }
+
+  // Exact aliases resolve before provider parsing, so full IDs such as
+  // openai/gpt-x can intentionally target a different concrete route.
+  const resolved = resolveModelAliasString(modelStr, aliases);
+  const parsed = parseModel(resolved.model);
 
   if (!parsed.isAlias) {
     // Provider-node prefixes are user-defined. They must not override built-in
@@ -66,16 +91,10 @@ export async function getModelInfo(modelStr) {
     };
   }
 
-  // Check if this is a combo name before resolving as alias
-  // This prevents combo names from being incorrectly routed to providers
-  const combo = await getComboByName(parsed.model);
-  if (combo) {
-    // Return null provider to signal this should be handled as combo
-    // The caller (handleChat) will detect this and handle it as combo
-    return { provider: null, model: parsed.model };
-  }
+  const aliasResult = resolveModelAliasFromMap(parsed.model, aliases);
+  if (aliasResult) return aliasResult;
 
-  return getModelInfoCore(modelStr, getModelAliases);
+  return getModelInfoCore(resolved.model, {});
 }
 
 /**

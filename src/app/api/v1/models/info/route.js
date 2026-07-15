@@ -1,6 +1,9 @@
 import { PROVIDER_MODELS } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getModelKind } from "@/shared/constants/models";
+import { getModelAliases, getProviderConnections } from "@/lib/localDb";
+import { resolveModelAliasString } from "open-sse/services/model.js";
+import { getCanonicalFallbackAliases } from "open-sse/services/modelAliases.js";
 
 const KIND_ENDPOINT = {
   llm: "/v1/chat/completions",
@@ -93,12 +96,33 @@ export async function GET(request) {
       { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
     );
   }
-  const info = lookup(id, kind);
+  let resolvedId = id;
+  try {
+    const [storedAliases, connections] = await Promise.all([getModelAliases(), getProviderConnections()]);
+    const providerIds = new Set(
+      connections.filter((connection) => connection.isActive !== false).map((connection) => connection.provider),
+    );
+    const aliases = {
+      ...getCanonicalFallbackAliases({ providerIds, aliases: storedAliases }),
+      ...storedAliases,
+    };
+    resolvedId = resolveModelAliasString(id, aliases).model;
+  } catch (error) {
+    return Response.json(
+      { error: { message: error.message, type: "invalid_request_error", code: error.code } },
+      { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
+    );
+  }
+  const info = lookup(resolvedId, kind);
   if (!info) {
     return Response.json(
       { error: { message: `Model not found: ${id}`, type: "not_found" } },
       { status: 404, headers: { "Access-Control-Allow-Origin": "*" } },
     );
+  }
+  if (resolvedId !== id) {
+    info.id = id;
+    info["x-9router-target"] = resolvedId;
   }
   return Response.json(info, { headers: { "Access-Control-Allow-Origin": "*" } });
 }

@@ -15,8 +15,39 @@ export async function setModelAlias(alias, model) {
   await aliasKv.set(alias, model);
 }
 
+function readModelAliases(db) {
+  const aliases = {};
+  for (const row of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) {
+    aliases[row.key] = parseJson(row.value);
+  }
+  return aliases;
+}
+
+// Validate and write against one transactional snapshot so concurrent edits
+// cannot create an alias cycle after both requests independently validate.
+export async function setModelAliasValidated(alias, model, validate) {
+  const db = await getAdapter();
+  let result;
+  db.transaction(() => {
+    result = validate(readModelAliases(db));
+    db.run(
+      `INSERT OR REPLACE INTO kv(scope, key, value) VALUES('modelAliases', ?, ?)`,
+      [result?.alias || alias, stringifyJson(result?.target || model)],
+    );
+  });
+  return result;
+}
+
 export async function deleteModelAlias(alias) {
   await aliasKv.remove(alias);
+}
+
+export async function deleteModelAliasValidated(alias, validate) {
+  const db = await getAdapter();
+  db.transaction(() => {
+    validate(readModelAliases(db));
+    db.run(`DELETE FROM kv WHERE scope = 'modelAliases' AND key = ?`, [alias]);
+  });
 }
 
 // customModels: key=`${providerAlias}|${id}|${type}`, value=full model object

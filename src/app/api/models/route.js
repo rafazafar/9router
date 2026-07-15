@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { getModelAliases, setModelAlias } from "@/models";
+import { getModelAliases, setModelAliasValidated } from "@/models";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { validateModelAlias } from "open-sse/services/modelAliases.js";
 
 // GET /api/models - Get models with aliases
 export async function GET() {
@@ -23,7 +24,7 @@ export async function GET() {
         return {
           ...m,
           fullModel,
-          alias: modelAliases[fullModel] || m.model,
+          alias: Object.entries(modelAliases).find(([, target]) => target === fullModel)?.[0] || m.model,
           caps: { vision: c.vision, search: c.search, reasoning: c.reasoning },
         };
       });
@@ -39,29 +40,27 @@ export async function GET() {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { model, alias } = body;
+    const { model, alias, override = false } = body;
 
     if (!model || !alias) {
       return NextResponse.json({ error: "Model and alias required" }, { status: 400 });
     }
 
-    const modelAliases = await getModelAliases();
+    const validated = await setModelAliasValidated(alias, model, (aliases) => (
+      validateModelAlias({
+        alias,
+        target: model,
+        aliases,
+        allowOverride: override === true,
+      })
+    ));
 
-    // Check if alias already exists for different model
-    const existingModel = Object.entries(modelAliases).find(
-      ([key, val]) => val === alias && key !== model
-    );
-
-    if (existingModel) {
-      return NextResponse.json({ error: "Alias already in use" }, { status: 400 });
-    }
-
-    // Update alias
-    await setModelAlias(model, alias);
-
-    return NextResponse.json({ success: true, model, alias });
+    return NextResponse.json({ success: true, model: validated.target, alias: validated.alias });
   } catch (error) {
-    console.log("Error updating alias:", error);
-    return NextResponse.json({ error: "Failed to update alias" }, { status: 500 });
+    if (!error.status || error.status >= 500) console.log("Error updating alias:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to update alias", code: error.code },
+      { status: error.status || 500 },
+    );
   }
 }
