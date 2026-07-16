@@ -8,6 +8,7 @@ import {
 } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { appendAliasModelEntries, getCanonicalFallbackAliases } from "open-sse/services/modelAliases.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
@@ -293,6 +294,13 @@ export async function buildModelsList(kindFilter) {
   } catch (e) {
     console.log("Could not fetch model aliases");
   }
+  const effectiveModelAliases = {
+    ...getCanonicalFallbackAliases({
+      providerIds: new Set(connections.map((connection) => connection.provider)),
+      aliases: modelAliases,
+    }),
+    ...modelAliases,
+  };
 
   let disabledByAlias = {};
   try {
@@ -457,7 +465,7 @@ export async function buildModelsList(kindFilter) {
         })
         .filter((modelId) => modelId !== "");
 
-      const aliasModelIds = Object.values(modelAliases || {})
+      const aliasModelIds = Object.values(effectiveModelAliases)
         .filter((fullModel) => {
           if (typeof fullModel !== "string" || !fullModel.includes("/")) return false;
           return (
@@ -530,7 +538,7 @@ export async function buildModelsList(kindFilter) {
     dedupedModels.push(model);
   }
 
-  return dedupedModels;
+  return appendAliasModelEntries(dedupedModels, effectiveModelAliases);
 }
 
 /**

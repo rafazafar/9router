@@ -76,6 +76,13 @@ const getPageInfo = (pathname) => {
       icon: "dns",
       breadcrumbs: [],
     };
+  if (pathname.includes("/model-aliases"))
+    return {
+      title: "Model Aliases",
+      description: "Map canonical and custom model IDs to concrete provider routes",
+      icon: "alt_route",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/combos"))
     return {
       title: "Combos",
