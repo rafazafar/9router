@@ -1,6 +1,7 @@
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS, getModelKind } from "@/shared/constants/models";
 import {
   AI_PROVIDERS,
+  ALIAS_TO_ID,
   getProviderAlias,
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
@@ -13,7 +14,8 @@ import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
-import { capabilitiesFromServiceKind } from "open-sse/providers/capabilities.js";
+import { capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
@@ -84,6 +86,79 @@ const UPSTREAM_CONNECTION_RE = /[-_][0-9a-f]{8,}$/i;
 
 // LLM kind sentinel — combos/models with no explicit kind default to LLM
 const LLM_KIND = "llm";
+
+/**
+ * Add 9Router's normalized model metadata extensions to an OpenAI model object.
+ * Standard OpenAI fields remain unchanged; clients that understand the extensions
+ * can discover modalities, limits, reasoning support, and valid effort levels.
+ */
+export function enrichModelEntry(model, providerId, modelId, sourceCapabilities = null) {
+  const inferred = getCapabilitiesForModel(providerId, modelId);
+  const live = sourceCapabilities && typeof sourceCapabilities === "object"
+    ? sourceCapabilities
+    : {};
+  const capabilities = { ...inferred, ...live };
+
+  // Some live catalogs call this feature `thinking`; normalize it to the shared
+  // `reasoning` capability while retaining the upstream field for compatibility.
+  if (typeof live.reasoning !== "boolean" && typeof live.thinking === "boolean") {
+    capabilities.reasoning = live.thinking;
+  }
+
+  return {
+    ...model,
+    capabilities,
+    thinking_levels: getThinkingLevels(providerId, modelId, capabilities) || [],
+  };
+}
+
+const BOOLEAN_CAPABILITIES = [
+  "vision", "pdf", "audioInput", "videoInput", "imageOutput", "audioOutput",
+  "search", "tools", "reasoning",
+];
+
+function enrichComboEntry(model, members, modelAliases) {
+  const resolvedMembers = (Array.isArray(members) ? members : [])
+    .map((member) => modelAliases?.[member] || member)
+    .filter((member) => typeof member === "string" && member.includes("/"))
+    .map((member) => {
+      const slash = member.indexOf("/");
+      const alias = member.slice(0, slash);
+      const modelId = member.slice(slash + 1);
+      const providerId = ALIAS_TO_ID[alias] || alias;
+      const capabilities = getCapabilitiesForModel(providerId, modelId);
+      return {
+        capabilities,
+        levels: getThinkingLevels(providerId, modelId, capabilities) || [],
+      };
+    });
+
+  if (resolvedMembers.length === 0) {
+    return enrichModelEntry(model, null, model.id);
+  }
+
+  const capabilities = { ...resolvedMembers[0].capabilities };
+  // A combo can route feature-specific requests to any capable member, while
+  // token limits must stay conservative because fallback members may be smaller.
+  for (const key of BOOLEAN_CAPABILITIES) {
+    capabilities[key] = resolvedMembers.some((member) => member.capabilities[key] === true);
+  }
+  capabilities.contextWindow = Math.min(...resolvedMembers.map((member) => member.capabilities.contextWindow));
+  capabilities.maxOutput = Math.min(...resolvedMembers.map((member) => member.capabilities.maxOutput));
+  capabilities.thinkingCanDisable = resolvedMembers.every((member) => member.capabilities.thinkingCanDisable !== false);
+  if (!resolvedMembers.every((member) => member.capabilities.thinkingFormat === capabilities.thinkingFormat)) {
+    capabilities.thinkingFormat = null;
+  }
+  if (!resolvedMembers.every((member) => JSON.stringify(member.capabilities.thinkingRange) === JSON.stringify(capabilities.thinkingRange))) {
+    capabilities.thinkingRange = null;
+  }
+
+  return {
+    ...model,
+    capabilities,
+    thinking_levels: [...new Set(resolvedMembers.flatMap((member) => member.levels))],
+  };
+}
 
 // Map per-model `type` field (in PROVIDER_MODELS) to service kind.
 // Models without `type` are treated as LLM.
@@ -247,7 +322,7 @@ export async function buildModelsList(kindFilter) {
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     }
-    models.push(entry);
+    models.push(enrichComboEntry(entry, combo.models, modelAliases));
   }
 
   if (connections.length === 0) {
@@ -261,11 +336,11 @@ export async function buildModelsList(kindFilter) {
       for (const model of providerModels) {
         if (!kindFilter.includes(modelKind(model))) continue;
         if (isDisabled(alias, model.id)) continue;
-        models.push({
+        models.push(enrichModelEntry({
           id: `${alias}/${model.id}`,
           object: "model",
           owned_by: alias,
-        });
+        }, providerId, model.id, model.capabilities));
       }
     }
 
@@ -279,11 +354,12 @@ export async function buildModelsList(kindFilter) {
       const modelId = String(customModel.id).trim();
       if (!modelId) continue;
 
-      models.push({
+      const providerId = ALIAS_TO_ID[providerAlias] || providerAlias;
+      models.push(enrichModelEntry({
         id: `${providerAlias}/${modelId}`,
         object: "model",
         owned_by: providerAlias,
-      });
+      }, providerId, modelId, capabilitiesFromServiceKind(customModel.kind || customModel.type)));
     }
   } else {
     for (const [providerId, conn] of activeConnectionByProvider.entries()) {
@@ -422,8 +498,7 @@ export async function buildModelsList(kindFilter) {
           owned_by: outputAlias,
         };
         const caps = liveCapabilitiesById.get(modelId) || capabilitiesFromServiceKind(customKind || liveKind);
-        if (caps) model.capabilities = caps;
-        models.push(model);
+        models.push(enrichModelEntry(model, providerId, modelId, caps));
       }
 
       // Web search/fetch — provider IS the model, expose as {alias}/search and/or {alias}/fetch with explicit kind

@@ -38,8 +38,10 @@ const PATTERN_THINKING = [
 ];
 
 // Returns valid thinking levels for a model, or null when the model has no reasoning.
-export function getThinkingLevels(provider, model) {
-  const caps = getCapabilitiesForModel(provider, model);
+// Callers with authoritative live metadata may pass the already-merged capability
+// object so level discovery reflects the same data they expose to clients.
+export function getThinkingLevels(provider, model, resolvedCapabilities = null) {
+  const caps = resolvedCapabilities || getCapabilitiesForModel(provider, model);
   if (!caps.reasoning) return null;
   const hit = PATTERN_THINKING.find((p) => matchPattern(p.pattern, model));
   let levels = hit?.levels || FORMAT_LEVELS[caps.thinkingFormat] || L.base;
