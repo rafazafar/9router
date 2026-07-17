@@ -6,6 +6,8 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { capsToOpenCodeModel } from "./modelMeta";
 
 export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [status, setStatus] = useState(initialStatus || null);
@@ -25,6 +27,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   const [selectedModels, setSelectedModels] = useState([]);
   const [activeModel, setActiveModel] = useState("");
   const selectedModelsRef = useRef([]);
+  const { getCaps } = useModelCaps();
 
   useEffect(() => {
     selectedModelsRef.current = selectedModels;
@@ -186,13 +189,13 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
       ? selectedApiKey
       : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
 
-    const modelsToShow = selectedModels.length > 0 ? selectedModels : ["provider/model-id"];
+    const modelsToShow = selectedModels.length > 0 ? selectedModels : (availableModels?.[0]?.value ? [availableModels[0].value] : ["provider/model-id"]);
     const activeModelToShow = activeModel || selectedModels[0] || modelsToShow[0];
     const effectiveSubagentModel = subagentModel || activeModelToShow;
 
     const modelsObj = {};
     modelsToShow.forEach(m => {
-      modelsObj[m] = { name: m, modalities: { input: ["text", "image"], output: ["text"] } };
+      modelsObj[m] = { name: m, ...capsToOpenCodeModel(getCaps(m)) };
     });
 
     return [{
