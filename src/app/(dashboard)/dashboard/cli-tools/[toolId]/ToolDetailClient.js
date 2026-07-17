@@ -112,6 +112,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
       tunnelPublicUrl,
       tailscaleEnabled,
       tailscaleUrl,
+      availableModels,
     };
 
     switch (toolId) {
