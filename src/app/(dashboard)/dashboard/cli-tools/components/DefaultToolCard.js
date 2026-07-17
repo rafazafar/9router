@@ -6,7 +6,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
 
-export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders = [], cloudEnabled = false, tunnelEnabled = false }) {
+export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders = [], availableModels = [], cloudEnabled = false, tunnelEnabled = false }) {
   const [copiedField, setCopiedField] = useState(null);
   const [showModelModal, setShowModelModal] = useState(false);
   const [modelValue, setModelValue] = useState("");
@@ -30,7 +30,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
     return text
       .replace(/\{\{baseUrl\}\}/g, baseUrlWithV1)
       .replace(/\{\{apiKey\}\}/g, keyToUse)
-      .replace(/\{\{model\}\}/g, modelValue || "provider/model-id");
+      .replace(/\{\{model\}\}/g, modelValue || availableModels?.[0]?.value || "provider/model-id");
   };
 
   const { copy: copyToClipboard } = useCopyToClipboard();
