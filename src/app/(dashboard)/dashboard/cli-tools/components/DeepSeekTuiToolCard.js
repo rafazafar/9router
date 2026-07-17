@@ -174,7 +174,7 @@ export default function DeepSeekTuiToolCard({
     const tomlContent = `[providers.openai]
 base_url = "${getEffectiveBaseUrl()}"
 api_key = "${keyToUse}"
-model = "${selectedModel || "provider/model-id"}"
+model = "${selectedModel || availableModels?.[0]?.value || "provider/model-id"}"
 `;
 
     return [
