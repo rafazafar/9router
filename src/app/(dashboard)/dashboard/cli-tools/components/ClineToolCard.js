@@ -141,8 +141,8 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
           actModeApiProvider: "openai",
           planModeApiProvider: "openai",
           openAiBaseUrl: baseWithoutV1,
-          openAiModelId: selectedModel || "provider/model-id",
-          planModeOpenAiModelId: selectedModel || "provider/model-id",
+          openAiModelId: selectedModel || availableModels?.[0]?.value || "provider/model-id",
+          planModeOpenAiModelId: selectedModel || availableModels?.[0]?.value || "provider/model-id",
         }, null, 2),
       },
       {
