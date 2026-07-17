@@ -199,7 +199,7 @@ export default function OpenClawToolCard({
       agents: {
         defaults: {
           model: {
-            primary: `9router/${selectedModel || "provider/model-id"}`,
+            primary: `9router/${selectedModel || availableModels?.[0]?.value || "provider/model-id"}`,
           },
         },
       },
@@ -211,8 +211,8 @@ export default function OpenClawToolCard({
             api: "openai-completions",
             models: [
               {
-                id: selectedModel || "provider/model-id",
-                name: (selectedModel || "provider/model-id").split("/").pop(),
+                id: selectedModel || availableModels?.[0]?.value || "provider/model-id",
+                name: (selectedModel || availableModels?.[0]?.value || "provider/model-id").split("/").pop(),
               },
             ],
           },
