@@ -38,3 +38,13 @@ describe("applyThinking (openai): clamp max effort to xhigh", () => {
     expect(out.reasoning_effort).toBe("xhigh");
   });
 });
+
+describe("applyThinking: models without thinking support", () => {
+  it("strips a configured thinking level from Grok Composer 2.5", () => {
+    const body = { reasoning_effort: "high", messages: [{ role: "user", content: "hello" }] };
+    const out = applyThinking(FORMATS.OPENAI, "grok-composer-2.5", body, "cursor");
+
+    expect(out.reasoning_effort).toBeUndefined();
+    expect(out.messages).toEqual([{ role: "user", content: "hello" }]);
+  });
+});

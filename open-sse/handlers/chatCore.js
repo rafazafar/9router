@@ -64,10 +64,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, model);
   const upstreamModel = getModelUpstreamId(alias, model);
+  const modelCapabilities = getCapabilitiesForModel(provider, stripThinkingSuffix(model));
 
-  // Inject provider-level thinking config override (only if client hasn't set)
+  // Inject provider-level thinking config override only for models that accept
+  // configurable thinking. Some models under otherwise-reasoning providers
+  // reject the field entirely.
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
-  if (providerThinking?.mode && providerThinking.mode !== "auto") {
+  if (modelCapabilities.reasoning && providerThinking?.mode && providerThinking.mode !== "auto") {
     const mode = providerThinking.mode;
     if (mode === "on" && !body.thinking) {
       console.log("Injecting provider-level thinking config override: on");
@@ -120,8 +123,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Auto-strip media blocks the model can't read (vision/audio/pdf) before translation.
   if (!passthrough) {
-    const caps = getCapabilitiesForModel(provider, model);
-    if (stripUnsupportedModalities(body, sourceFormat, caps)) {
+    if (stripUnsupportedModalities(body, sourceFormat, modelCapabilities)) {
       log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${model}`);
     }
     // Convert remote image URLs to base64 for targets that can't fetch URLs.

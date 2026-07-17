@@ -18,4 +18,8 @@ describe("getThinkingLevels", () => {
     const levels = getThinkingLevels("codex", "gpt-5.5");
     expect(levels || []).not.toContain("max");
   });
+
+  it("does not offer thinking levels for Grok Composer 2.5", () => {
+    expect(getThinkingLevels("cursor", "grok-composer-2.5")).toBeNull();
+  });
 });

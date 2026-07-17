@@ -26,4 +26,11 @@ describe("getCapabilitiesForModel", () => {
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5-agentic")).toMatchObject(claudeSonnet5Expected);
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5-thinking-agentic")).toMatchObject(claudeSonnet5Expected);
   });
+
+  it("does not advertise thinking for Grok Composer 2.5", () => {
+    expect(getCapabilitiesForModel("cursor", "grok-composer-2.5")).toMatchObject({
+      reasoning: false,
+      thinkingFormat: null,
+    });
+  });
 });

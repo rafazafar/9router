@@ -90,6 +90,10 @@ export const MODEL_CAPABILITIES = {
   // Gemini image-gen / OpenAI image / xai image variants
   "gpt-image-1":       { imageOutput: true, tools: false },
 
+  // Composer exposes its internal reasoning as visible content, but rejects
+  // configurable thinking/reasoning levels on the request.
+  "grok-composer-2.5": { vision: true, search: true, reasoning: false, contextWindow: 256000 },
+
   // GLM vision variant (text GLM has no vision)
   "glm-4.6v":          { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000 },
 
