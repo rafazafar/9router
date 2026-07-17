@@ -162,10 +162,10 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
       ? selectedApiKey
       : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
 
-    const effectiveSubagentModel = subagentModel || selectedModel;
+    const effectiveSubagentModel = subagentModel || selectedModel || availableModels?.[0]?.value || "";
 
     const configContent = `# 9Router Configuration for Codex CLI
-model = "${selectedModel}"
+model = "${selectedModel || availableModels?.[0]?.value || ""}"
 model_provider = "9router"
 
 [model_providers.9router]
