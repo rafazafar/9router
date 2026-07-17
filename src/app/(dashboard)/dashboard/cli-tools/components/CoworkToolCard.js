@@ -231,7 +231,8 @@ export default function CoworkToolCard({
       ? selectedApiKey
       : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
 
-    const modelsToShow = selectedModels.length > 0 ? selectedModels : (availableModels?.[0]?.value ? [availableModels[0].value] : ["provider/model-id"]);
+    const allModelValues = (availableModels || []).map(m => m.value).filter(Boolean);
+    const modelsToShow = allModelValues.length > 0 ? allModelValues : ["provider/model-id"];
     const cfg = {
       inferenceProvider: "gateway",
       inferenceGatewayBaseUrl: getEffectiveBaseUrl() || "https://your-public-host/v1",

@@ -189,7 +189,8 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
       ? selectedApiKey
       : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
 
-    const modelsToShow = selectedModels.length > 0 ? selectedModels : (availableModels?.[0]?.value ? [availableModels[0].value] : ["provider/model-id"]);
+    const allModelValues = (availableModels || []).map(m => m.value).filter(Boolean);
+    const modelsToShow = allModelValues.length > 0 ? allModelValues : ["provider/model-id"];
     const activeModelToShow = activeModel || selectedModels[0] || modelsToShow[0];
     const effectiveSubagentModel = subagentModel || activeModelToShow;
 
