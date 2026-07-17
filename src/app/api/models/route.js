@@ -25,7 +25,7 @@ export async function GET() {
           ...m,
           fullModel,
           alias: Object.entries(modelAliases).find(([, target]) => target === fullModel)?.[0] || m.model,
-          caps: { vision: c.vision, search: c.search, reasoning: c.reasoning },
+          caps: c,
         };
       });
 
