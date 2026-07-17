@@ -15,6 +15,7 @@ export default function OpenClawToolCard({
   hasActiveProviders,
   apiKeys,
   activeProviders,
+  availableModels,
   cloudEnabled,
   initialStatus,
   tunnelEnabled,

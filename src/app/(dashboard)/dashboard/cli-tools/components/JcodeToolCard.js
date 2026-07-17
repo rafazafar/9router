@@ -15,6 +15,7 @@ export default function JcodeToolCard({
   hasActiveProviders,
   apiKeys,
   activeProviders,
+  availableModels,
   cloudEnabled,
   initialStatus,
   tunnelEnabled,

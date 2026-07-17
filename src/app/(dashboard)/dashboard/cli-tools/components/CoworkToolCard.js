@@ -22,6 +22,7 @@ export default function CoworkToolCard({
   baseUrl,
   apiKeys,
   activeProviders,
+  availableModels,
   hasActiveProviders,
   cloudEnabled,
   cloudUrl,

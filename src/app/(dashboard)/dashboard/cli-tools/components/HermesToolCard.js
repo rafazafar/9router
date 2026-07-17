@@ -17,6 +17,7 @@ export default function HermesToolCard({
   hasActiveProviders,
   apiKeys,
   activeProviders,
+  availableModels,
   cloudEnabled,
   initialStatus,
   tunnelEnabled,

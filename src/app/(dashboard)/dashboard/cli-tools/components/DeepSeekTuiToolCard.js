@@ -17,6 +17,7 @@ export default function DeepSeekTuiToolCard({
   hasActiveProviders,
   apiKeys,
   activeProviders,
+  availableModels,
   cloudEnabled,
   initialStatus,
   tunnelEnabled,
