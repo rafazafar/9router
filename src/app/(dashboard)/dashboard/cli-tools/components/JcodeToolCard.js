@@ -190,11 +190,11 @@ base_url = "${getEffectiveBaseUrl()}"
 auth = "bearer"
 api_key_env = "JCODE_9ROUTER_API_KEY"
 env_file = "provider-9router.env"
-default_model = "${selectedModel || "cc/claude-opus-4-7"}"
+default_model = "${selectedModel || availableModels?.[0]?.value || "cc/claude-opus-4-7"}"
 requires_api_key = true
 
 [[providers.9router.models]]
-id = "${selectedModel || "cc/claude-opus-4-7"}"`;
+id = "${selectedModel || availableModels?.[0]?.value || "cc/claude-opus-4-7"}"`;
 
     const envContent = `JCODE_9ROUTER_API_KEY="${keyToUse}"`;
 
