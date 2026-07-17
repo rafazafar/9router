@@ -133,7 +133,7 @@ export default function KiloToolCard({ tool, isExpanded, onToggle, baseUrl, apiK
           type: "api-key",
           apiKey: keyToUse,
           baseUrl: getEffectiveBaseUrl(),
-          model: selectedModel || "provider/model-id",
+          model: selectedModel || availableModels?.[0]?.value || "provider/model-id",
         },
       }, null, 2),
     }];
