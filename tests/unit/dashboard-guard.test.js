@@ -236,6 +236,26 @@ describe("dashboard guard role boundaries", () => {
     expect(response).toBe(mocks.nextResponse);
   });
 
+  it("allows members to use scoped CLI Tools UI but not host-management APIs", async () => {
+    mocks.getDashboardAuthSession.mockResolvedValue({ sub: "member", sessionVersion: 3 });
+    mocks.getUserById.mockResolvedValue({ id: "member", role: "member", status: "active", sessionVersion: 3 });
+
+    expect(await proxy(request("/dashboard/cli-tools", { host: "localhost:20128" }, "member-token"))).toBe(mocks.nextResponse);
+    const apiResponse = await proxy(request("/api/cli-tools/opencode-settings", { host: "localhost:20128" }, "member-token"));
+    expect(apiResponse.status).toBe(403);
+    expect(apiResponse.body.error).toBe("Administrator access required");
+  });
+
+  it("allows members to view endpoint docs but not tunnel APIs", async () => {
+    mocks.getDashboardAuthSession.mockResolvedValue({ sub: "member", sessionVersion: 3 });
+    mocks.getUserById.mockResolvedValue({ id: "member", role: "member", status: "active", sessionVersion: 3 });
+
+    expect(await proxy(request("/dashboard/endpoint", { host: "localhost:20128" }, "member-token"))).toBe(mocks.nextResponse);
+    const apiResponse = await proxy(request("/api/tunnel/status", { host: "localhost:20128" }, "member-token"));
+    expect(apiResponse.status).toBe(403);
+    expect(apiResponse.body.error).toBe("Administrator access required");
+  });
+
   it("rejects an admin token after role change or session revocation", async () => {
     mocks.getDashboardAuthSession.mockResolvedValue({ sub: "admin", sessionVersion: 4 });
     mocks.getUserById.mockResolvedValue({ id: "admin", role: "member", status: "active", sessionVersion: 5 });

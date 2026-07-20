@@ -18,7 +18,7 @@ const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
 const navItems = [
-  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api", adminOnly: true },
+  { href: "/dashboard/endpoint", label: "Endpoint", icon: "api" },
   { href: "/dashboard/keys", label: "API Keys", icon: "key" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
   { href: "/dashboard/account", label: "Account", icon: "person" },
@@ -29,7 +29,7 @@ const navItems = [
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage", adminOnly: true },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings", adminOnly: true },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
-  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", adminOnly: true },
+  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
   { href: "/dashboard/members", label: "Members", icon: "group", adminOnly: true },
 ];
 

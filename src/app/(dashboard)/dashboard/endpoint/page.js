@@ -1,7 +1,7 @@
-import { getMachineId } from "@/shared/utils/machine";
 import EndpointPageClient from "./EndpointPageClient";
+import { requireUser } from "@/lib/auth/authorization";
 
 export default async function EndpointPage() {
-  const machineId = await getMachineId();
-  return <EndpointPageClient machineId={machineId} />;
+  const principal = await requireUser();
+  return <EndpointPageClient isAdmin={principal.role === "admin"} />;
 }

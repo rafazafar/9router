@@ -346,13 +346,16 @@ describe("multi-user API-key routes", () => {
     const aliceList = await collectionRoute.GET(await requestFor(alice, "http://localhost/api/keys"));
     const listedBody = await aliceList.json();
     expect(listedBody.keys.map((key) => key.id)).toEqual([created.id]);
-    expect(JSON.stringify(listedBody)).not.toContain(created.key);
+    expect(listedBody.keys[0].key).toBe(created.key);
+    expect(aliceList.headers.get("cache-control")).toBe("no-store");
 
     const adminRead = await itemRoute.GET(
       await requestFor(admin, `http://localhost/api/keys/${created.id}`),
       { params: Promise.resolve({ id: created.id }) },
     );
     expect(adminRead.status).toBe(200);
+    expect((await adminRead.json()).key.key).toBe(created.key);
+    expect(adminRead.headers.get("cache-control")).toBe("no-store");
   });
 });
 

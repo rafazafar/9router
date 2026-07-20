@@ -7,8 +7,8 @@ function canManageKey(principal, key) {
   return principal.role === "admin" || key?.ownerUserId === principal.userId;
 }
 
-function sanitizeKey({ key: secret, ...key }) {
-  return { ...key, keyPrefix: secret ? `${secret.slice(0, 8)}...` : null };
+function serializeKey({ key: secret, ...key }) {
+  return { ...key, key: secret, keyPrefix: secret ? `${secret.slice(0, 8)}...` : null };
 }
 
 // GET /api/keys/[id] - Get single key
@@ -20,7 +20,7 @@ export async function GET(request, { params }) {
     if (!key || !canManageKey(principal, key)) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
-    return NextResponse.json({ key: sanitizeKey(key) });
+    return NextResponse.json({ key: serializeKey(key) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const authResponse = authorizationErrorResponse(error);
     if (authResponse) return authResponse;
@@ -65,7 +65,7 @@ export async function PUT(request, { params }) {
 
     const updated = await updateApiKey(id, updateData);
 
-    return NextResponse.json({ key: sanitizeKey(updated) });
+    return NextResponse.json({ key: serializeKey(updated) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const authResponse = authorizationErrorResponse(error);
     if (authResponse) return authResponse;

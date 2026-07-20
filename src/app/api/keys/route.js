@@ -21,6 +21,7 @@ export async function GET(request) {
     }));
     const safeKeys = await Promise.all(keys.map(async ({ key: secret, ...key }) => ({
       ...key,
+      key: secret,
       keyPrefix: secret ? `${secret.slice(0, 8)}...` : null,
       ownerDisplayName: key.ownerUserId === principal.userId ? "You" : (userNames.get(key.ownerUserId) || "Unknown user"),
       accessibleConnectionIds: (await getEffectiveApiKeyConnectionIds(key)).filter((id) => id !== "__noauth__"),
@@ -28,7 +29,7 @@ export async function GET(request) {
     return NextResponse.json({
       keys: safeKeys,
       connections: safeConnections,
-    });
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const authResponse = authorizationErrorResponse(error);
     if (authResponse) return authResponse;
@@ -67,7 +68,7 @@ export async function POST(request) {
       dailyRequestLimit: apiKey.dailyRequestLimit,
       dailyTokenLimit: apiKey.dailyTokenLimit,
       allowedConnectionIds: apiKey.allowedConnectionIds,
-    }, { status: 201 });
+    }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const authResponse = authorizationErrorResponse(error);
     if (authResponse) return authResponse;
