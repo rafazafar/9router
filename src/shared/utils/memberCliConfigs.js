@@ -6,8 +6,9 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'"'"'`)}'`;
 }
 
-export function buildMemberCliConfigs({ baseUrl, apiKey, model }) {
+export function buildMemberCliConfigs({ baseUrl, apiKey, model, models = [] }) {
   const apiBase = withV1(baseUrl);
+  const modelCatalog = [...new Set([...(models || []), model].filter(Boolean))];
   const claude = {
     hasCompletedOnboarding: true,
     env: {
@@ -26,7 +27,7 @@ export function buildMemberCliConfigs({ baseUrl, apiKey, model }) {
         npm: "@ai-sdk/openai-compatible",
         name: "9Router",
         options: { baseURL: apiBase, apiKey },
-        models: { [model]: { name: model } },
+        models: Object.fromEntries(modelCatalog.map((modelId) => [modelId, { name: modelId }])),
       },
     },
     model: `9router/${model}`,
