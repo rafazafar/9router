@@ -142,6 +142,7 @@ export async function deleteUser(id) {
   db.transaction(() => {
     db.run(`DELETE FROM connectionGrants WHERE userId = ?`, [id]);
     db.run(`DELETE FROM apiKeys WHERE ownerUserId = ?`, [id]);
+    db.run(`DELETE FROM userSettings WHERE userId = ?`, [id]);
     db.run(`DELETE FROM users WHERE id = ?`, [id]);
   });
   return true;

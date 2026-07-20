@@ -58,8 +58,8 @@ const ADMIN_ONLY_PREFIXES = [
 ];
 
 const ADMIN_DASHBOARD_PREFIXES = [
-  "/dashboard/model-aliases", "/dashboard/combos", "/dashboard/quota",
-  "/dashboard/token-saver", "/dashboard/members", "/dashboard/console-log",
+  "/dashboard/model-aliases", "/dashboard/combos",
+  "/dashboard/members", "/dashboard/console-log",
   "/dashboard/translator", "/dashboard/proxy-pools", "/dashboard/skills", "/dashboard/media-providers",
   "/dashboard/profile", "/dashboard/mitm", "/dashboard/pxpipe",
 ];

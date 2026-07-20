@@ -21,6 +21,10 @@ export {
   getInvitedOidcUserByEmail, createUser, updateUser, bindUserOidcIdentity, migrateUserOidcIssuer, clearUserPassword, deleteUser,
 } from "./repos/usersRepo.js";
 export { getConnectionGrants, grantConnection, revokeConnectionGrant, replaceConnectionGrants } from "./repos/grantsRepo.js";
+export {
+  TOKEN_SAVER_SETTING_KEYS, getUserTokenSaverOverrides,
+  getEffectiveUserTokenSaverSettings, updateUserTokenSaverSettings,
+} from "./repos/userSettingsRepo.js";
 
 // Provider nodes
 export {
@@ -98,6 +102,7 @@ export async function exportDb() {
       sessionVersion: r.sessionVersion, createdAt: r.createdAt, updatedAt: r.updatedAt,
     })),
     connectionGrants: db.all(`SELECT * FROM connectionGrants`),
+    userSettings: db.all(`SELECT * FROM userSettings`).map((r) => ({ userId: r.userId, data: parseJson(r.data, {}), updatedAt: r.updatedAt })),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     modelAliases: {},
     customModels: [],
@@ -133,6 +138,7 @@ export async function importDb(payload) {
     db.run(`DELETE FROM proxyPools`);
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM connectionGrants`);
+    db.run(`DELETE FROM userSettings`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
     for (const [id, user] of liveUsers) {
@@ -193,6 +199,10 @@ export async function importDb(payload) {
         `INSERT OR REPLACE INTO connectionGrants(connectionId, userId, grantedByUserId, createdAt) VALUES(?, ?, ?, ?)`,
         [g.connectionId, g.userId, g.grantedByUserId || "admin", g.createdAt || new Date().toISOString()]
       );
+    }
+    for (const s of payload.userSettings || []) {
+      if (!importedUserIds.has(s.userId)) continue;
+      db.run(`INSERT OR REPLACE INTO userSettings(userId, data, updatedAt) VALUES(?, ?, ?)`, [s.userId, stringifyJson(s.data || {}), s.updatedAt || new Date().toISOString()]);
     }
     for (const c of payload.combos || []) {
       db.run(

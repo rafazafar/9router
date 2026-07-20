@@ -91,8 +91,12 @@ export async function GET(request) {
     const sort = searchParams.get("sort") || "priority";
     const page = parsePositiveInt(searchParams.get("page"), 1);
     const pageSize = Math.min(parsePositiveInt(searchParams.get("pageSize"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
+    const ownedOnly = principal.role !== "admin" && searchParams.get("ownedOnly") === "1";
 
-    const allConnections = await getAccessibleProviderConnections(principal);
+    const accessibleConnections = await getAccessibleProviderConnections(principal);
+    const allConnections = ownedOnly
+      ? accessibleConnections.filter((connection) => connection.ownerUserId === principal.userId)
+      : accessibleConnections;
     const eligibleConnections = allConnections.filter(isUsageEligible);
     const providerOptions = Array.from(new Set(eligibleConnections.map((conn) => conn.provider))).sort();
 

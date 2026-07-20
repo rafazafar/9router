@@ -256,6 +256,12 @@ describe("dashboard guard role boundaries", () => {
     expect(apiResponse.body.error).toBe("Administrator access required");
   });
 
+  it.each(["/dashboard/token-saver", "/dashboard/quota"])("allows members to use tenant-scoped dashboard route %s", async (pathname) => {
+    mocks.getDashboardAuthSession.mockResolvedValue({ sub: "member", sessionVersion: 3 });
+    mocks.getUserById.mockResolvedValue({ id: "member", role: "member", status: "active", sessionVersion: 3 });
+    expect(await proxy(request(pathname, { host: "localhost:20128" }, "member-token"))).toBe(mocks.nextResponse);
+  });
+
   it("rejects an admin token after role change or session revocation", async () => {
     mocks.getDashboardAuthSession.mockResolvedValue({ sub: "admin", sessionVersion: 4 });
     mocks.getUserById.mockResolvedValue({ id: "admin", role: "member", status: "active", sessionVersion: 5 });

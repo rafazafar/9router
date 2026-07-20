@@ -359,6 +359,32 @@ describe("multi-user API-key routes", () => {
   });
 });
 
+describe("multi-user personal settings and quota listing", () => {
+  it("allows members to update only their own safe Token Saver preferences", async () => {
+    const route = await import("@/app/api/user-settings/token-saver/route.js");
+    const response = await route.PATCH(await requestFor(alice, "http://localhost/api/user-settings/token-saver", {
+      method: "PATCH",
+      body: JSON.stringify({ rtkEnabled: false, cavemanEnabled: true, headroomUrl: "https://ignored.example" }),
+    }));
+    expect(response.status).toBe(200);
+    expect((await response.json()).settings).toMatchObject({ rtkEnabled: false, cavemanEnabled: true });
+    expect(await db.getUserTokenSaverOverrides(alice.id)).not.toHaveProperty("headroomUrl");
+    expect(await db.getUserTokenSaverOverrides(bob.id)).toEqual({});
+  });
+
+  it("lists only member-owned accounts for Quota Tracker", async () => {
+    const ownedQuotaConnection = await db.createProviderConnection({
+      provider: "codex", authType: "oauth", name: "alice-codex",
+      accessToken: "alice-token", ownerUserId: alice.id,
+    });
+    const route = await import("@/app/api/providers/client/route.js");
+    const response = await route.GET(await requestFor(alice, "http://localhost/api/providers/client?ownedOnly=1&pageSize=500"));
+    const body = await response.json();
+    expect(body.connections.map((connection) => connection.id)).toEqual([ownedQuotaConnection.id]);
+    expect(body.connections.map((connection) => connection.id)).not.toContain(adminConnection.id);
+  });
+});
+
 describe("multi-user model discovery", () => {
   it("recomputes exact runtime credential access after grants and disablement", async () => {
     const key = await db.createApiKey("runtime-lifecycle", "machine", {

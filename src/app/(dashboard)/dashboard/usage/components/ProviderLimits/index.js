@@ -121,7 +121,7 @@ function formatTimeRemaining(value) {
   return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
 }
 
-export default function ProviderLimits() {
+export default function ProviderLimits({ isAdmin = true }) {
   const { copied, copy } = useCopyToClipboard();
   const [connections, setConnections] = useState([]);
   const [quotaData, setQuotaData] = useState({});
@@ -178,6 +178,7 @@ export default function ProviderLimits() {
           accountStatus: accountFilter,
           sort: "priority",
         });
+        if (!isAdmin) params.set("ownedOnly", "1");
 
         if (providerFilter !== "all") {
           params.set("provider", providerFilter);
@@ -208,7 +209,7 @@ export default function ProviderLimits() {
         return [];
       }
     },
-    [accountFilter, expiringFirst, page, pageSize, providerFilter],
+    [accountFilter, expiringFirst, isAdmin, page, pageSize, providerFilter],
   );
 
   // Fetch quota for a specific connection
@@ -444,6 +445,7 @@ export default function ProviderLimits() {
   );
 
   useEffect(() => {
+    if (!isAdmin) return;
     let cancelled = false;
     fetch("/api/proxy-pools?isActive=true", { cache: "no-store" })
       .then((res) => res.json())
@@ -456,7 +458,7 @@ export default function ProviderLimits() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAdmin]);
 
   const refreshAll = useCallback(async (force = false) => {
     if (refreshingAll) return;
@@ -534,6 +536,7 @@ export default function ProviderLimits() {
 
   // Load auto-ping per-connection maps
   useEffect(() => {
+    if (!isAdmin) return;
     fetch("/api/settings", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : {}))
       .then((s) => setAutoPingMaps({
@@ -541,7 +544,7 @@ export default function ProviderLimits() {
         codex: s?.codexAutoPing?.connections || {},
       }))
       .catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   const toggleAutoPing = useCallback(async (connectionId, provider, on) => {
     const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
@@ -1095,7 +1098,7 @@ export default function ProviderLimits() {
                         </Tooltip>
                       </>
                     )}
-                    {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && (
+                    {isAdmin && AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && (
                       <Tooltip text={AUTO_PING_TOOLTIPS[conn.provider]}>
                         <button
                           type="button"

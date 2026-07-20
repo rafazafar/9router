@@ -190,6 +190,20 @@ describe("multi-user database", () => {
     expect((await db.getUsageHistory({ userId: member.id })).map((entry) => entry.provider)).toEqual(["openai"]);
   });
 
+  it("merges isolated per-user Token Saver overrides with global defaults", async () => {
+    const db = await import("@/lib/db/index.js");
+    const alice = await db.createUser({ username: "token-alice", password: "secure-password" });
+    const bob = await db.createUser({ username: "token-bob", password: "secure-password" });
+    const globalSettings = await db.updateSettings({ rtkEnabled: true, cavemanEnabled: false, pxpipeMinChars: 25000 });
+
+    await db.updateUserTokenSaverSettings(alice.id, { rtkEnabled: false, cavemanEnabled: true, cavemanLevel: "ultra" });
+
+    expect(await db.getEffectiveUserTokenSaverSettings(alice.id, globalSettings)).toMatchObject({ rtkEnabled: false, cavemanEnabled: true, cavemanLevel: "ultra", pxpipeMinChars: 25000 });
+    expect(await db.getEffectiveUserTokenSaverSettings(bob.id, globalSettings)).toMatchObject({ rtkEnabled: true, cavemanEnabled: false, pxpipeMinChars: 25000 });
+    await expect(db.updateUserTokenSaverSettings(alice.id, { headroomUrl: "https://evil.example" })).resolves.toEqual(expect.not.objectContaining({ headroomUrl: expect.anything() }));
+    await expect(db.updateUserTokenSaverSettings(alice.id, { pxpipeMinChars: -1 })).rejects.toThrow("pxpipeMinChars");
+  });
+
   it("preserves member password hashes through database export and import", async () => {
     const db = await import("@/lib/db/index.js");
     const member = await db.createUser({ username: "backup-member", password: "secure-password" });

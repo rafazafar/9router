@@ -8,7 +8,7 @@ import {
   authorizeApiKey,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
-import { getSettings } from "@/lib/localDb";
+import { getEffectiveUserTokenSaverSettings, getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -223,7 +223,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
 
     // Use shared chatCore
-    const chatSettings = await getSettings();
+    const globalChatSettings = await getSettings();
+    const chatSettings = apiKeyPolicy?.ownerUserId
+      ? { ...globalChatSettings, ...await getEffectiveUserTokenSaverSettings(apiKeyPolicy.ownerUserId, globalChatSettings) }
+      : globalChatSettings;
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
     const result = await handleChatCore({
       body: { ...body, model: `${provider}/${model}` },
