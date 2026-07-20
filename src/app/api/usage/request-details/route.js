@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/usageDb";
+import { authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
 
 /**
  * GET /api/usage/request-details
@@ -7,6 +8,7 @@ import { getRequestDetails } from "@/lib/usageDb";
  */
 export async function GET(request) {
   try {
+    const principal = await requireUser(request);
     const { searchParams } = new URL(request.url);
     
     const pageRaw = parseInt(searchParams.get("page"));
@@ -19,6 +21,7 @@ export async function GET(request) {
     const status = searchParams.get("status");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+    const requestedUserId = searchParams.get("userId");
     
     if (page < 1) {
       return NextResponse.json(
@@ -45,11 +48,15 @@ export async function GET(request) {
     if (status) filter.status = status;
     if (startDate) filter.startDate = startDate;
     if (endDate) filter.endDate = endDate;
+    if (principal.role !== "admin") filter.userId = principal.userId;
+    else if (requestedUserId) filter.userId = requestedUserId;
     
     const result = await getRequestDetails(filter);
     
     return NextResponse.json(result);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(
       { error: "Failed to fetch request details" },

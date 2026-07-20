@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { requireUser } from "@/lib/auth/authorization";
+import { isOAuthOwner } from "@/lib/oauth/ownerState";
 
 /**
  * POST /api/oauth/kiro/social-exchange
@@ -9,13 +11,17 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
-    const { code, codeVerifier, provider } = await request.json();
+    const principal = await requireUser(request);
+    const { code, codeVerifier, provider, state } = await request.json();
 
     if (!code || !codeVerifier) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
+    }
+    if (!await isOAuthOwner(state, principal.userId, { consume: true })) {
+      return NextResponse.json({ error: "OAuth session not found" }, { status: 404 });
     }
 
     if (!provider || !["google", "github"].includes(provider)) {
@@ -50,8 +56,8 @@ export async function POST(request) {
         provider: provider.charAt(0).toUpperCase() + provider.slice(1),
       },
       testStatus: "active",
+      ownerUserId: principal.userId,
     });
-
     return NextResponse.json({
       success: true,
       connection: {

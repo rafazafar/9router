@@ -18,16 +18,19 @@ const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
 const navItems = [
-  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
+  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api", adminOnly: true },
+  { href: "/dashboard/keys", label: "API Keys", icon: "key" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
-  { href: "/dashboard/model-aliases", label: "Model Aliases", icon: "alt_route" },
+  { href: "/dashboard/account", label: "Account", icon: "person" },
+  { href: "/dashboard/model-aliases", label: "Model Aliases", icon: "alt_route", adminOnly: true },
   // { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" }, // Hidden
-  { href: "/dashboard/combos", label: "Combos", icon: "layers" },
+  { href: "/dashboard/combos", label: "Combos", icon: "layers", adminOnly: true },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
-  { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
-  { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
+  { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage", adminOnly: true },
+  { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings", adminOnly: true },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
-  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
+  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", adminOnly: true },
+  { href: "/dashboard/members", label: "Members", icon: "group", adminOnly: true },
 ];
 
 const debugItems = [
@@ -50,16 +53,22 @@ export default function Sidebar({ onClose }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [shutdownCountdown, setShutdownCountdown] = useState(0);
   const [enableTranslator, setEnableTranslator] = useState(false);
+  const [role, setRole] = useState(null);
   const { copied, copy } = useCopyToClipboard(2000);
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
 
   useEffect(() => {
-    fetch("/api/settings")
+    fetch("/api/auth/status")
       .then(res => res.json())
-      .then(data => { if (data.enableTranslator) setEnableTranslator(true); })
+      .then(data => setRole(data.authenticated ? data.user?.role || null : null))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (role !== "admin") return;
+    fetch("/api/settings").then(res => res.json()).then(data => { if (data.enableTranslator) setEnableTranslator(true); }).catch(() => {});
+  }, [role]);
 
   const isActive = (href) => {
     if (href === "/dashboard/endpoint") {
@@ -151,7 +160,7 @@ export default function Sidebar({ onClose }) {
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => (
+          {navItems.filter((item) => !item.adminOnly || role === "admin").map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -176,7 +185,7 @@ export default function Sidebar({ onClose }) {
           ))}
 
           {/* System section */}
-          <div className="pt-3 mt-2 space-y-0.5">
+          {role === "admin" && <div className="pt-3 mt-2 space-y-0.5">
             <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
               System
             </p>
@@ -319,7 +328,7 @@ export default function Sidebar({ onClose }) {
               </span>
               <span className="text-[13px] font-medium">Settings</span>
             </Link>
-          </div>
+          </div>}
         </nav>
 
       </aside>

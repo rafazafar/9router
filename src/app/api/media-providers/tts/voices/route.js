@@ -1,5 +1,6 @@
 import { VOICE_FETCHERS } from "open-sse/handlers/ttsCore.js";
 import { NextResponse } from "next/server";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 // Map locale code → country name
 const LOCALE_NAMES = new Intl.DisplayNames(["en"], { type: "region" });
@@ -21,6 +22,7 @@ function langName(code) {
  */
 export async function GET(request) {
   try {
+    await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const provider   = searchParams.get("provider") || "edge-tts";
     const langFilter = searchParams.get("lang");
@@ -94,6 +96,8 @@ export async function GET(request) {
 
     return NextResponse.json({ voices, languages, byLang });
   } catch (err) {
+    const authResponse = authorizationErrorResponse(err);
+    if (authResponse) return authResponse;
     return NextResponse.json({ error: err.message || "Failed to fetch voices" }, { status: 502 });
   }
 }

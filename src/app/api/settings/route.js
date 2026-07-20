@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSettings, updateSettings } from "@/lib/localDb";
+import { getSettings, updateSettings, updateUser } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { runQuotaAutoPingTick } from "@/shared/services/quotaAutoPing";
 import bcrypt from "bcryptjs";
+import { requireAdmin } from "@/lib/auth/authorization";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,8 +16,9 @@ const SETTINGS_RESPONSE_HEADERS = {
 // Secrets must never be mass-assigned from request body (CWE-915)
 const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted"];
 
-export async function GET() {
+export async function GET(request) {
   try {
+    await requireAdmin(request);
     const settings = await getSettings();
     const { password, oidcClientSecret, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
@@ -38,13 +40,19 @@ export async function GET() {
 
 export async function PATCH(request) {
   try {
+    await requireAdmin(request);
     const body = await request.json();
+
+    if (body.requireLogin === false) {
+      return NextResponse.json({ error: "Login is required when multi-user access is enabled" }, { status: 400 });
+    }
 
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
 
     // If updating password, hash it
     if (body.newPassword) {
+      const newPassword = body.newPassword;
       const settings = await getSettings();
       const currentHash = settings.password;
 
@@ -67,6 +75,7 @@ export async function PATCH(request) {
 
       const salt = await bcrypt.genSalt(10);
       body.password = await bcrypt.hash(body.newPassword, salt);
+      await updateUser("admin", { password: newPassword, revokeSessions: true });
       delete body.newPassword;
       delete body.currentPassword;
     }

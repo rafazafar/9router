@@ -5,9 +5,11 @@ import { FORMATS } from "open-sse/translator/formats.js";
 import { getModelInfo } from "@/sse/services/model.js";
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor } from "open-sse/executors/index.js";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 export async function POST(request) {
   try {
+    await requireAdmin(request);
     const { step, body } = await request.json();
 
     if (!step || !body) {
@@ -84,6 +86,8 @@ export async function POST(request) {
         return NextResponse.json({ success: false, error: "Invalid step (1-3)" }, { status: 400 });
     }
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error("Error in translator:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

@@ -90,6 +90,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
           code,
           codeVerifier: authData.codeVerifier,
           provider,
+          state,
         }),
       });
 

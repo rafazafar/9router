@@ -2,6 +2,9 @@
 export {
   getProviderConnections,
   getProviderConnectionById,
+  getAccessibleProviderConnections,
+  getAccessibleProviderConnectionById,
+  canManageProviderConnection,
   createProviderConnection,
   updateProviderConnection,
   deleteProviderConnection,

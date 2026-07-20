@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 export async function POST(request) {
   try {
+    await requireAdmin(request);
     const { file, content } = await request.json();
 
     if (!file || content === undefined) {
@@ -38,6 +40,8 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error("Error saving file:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

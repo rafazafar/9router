@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
   try {
+    await requireAdmin(request);
     const { id } = await params;
     const body = await request.json();
     const { name, prefix, apiType, baseUrl } = body;
@@ -75,6 +77,8 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json({ node: updated });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error updating provider node:", error);
     return NextResponse.json({ error: "Failed to update provider node" }, { status: 500 });
   }
@@ -83,6 +87,7 @@ export async function PUT(request, { params }) {
 // DELETE /api/provider-nodes/[id] - Delete provider node and its connections
 export async function DELETE(request, { params }) {
   try {
+    await requireAdmin(request);
     const { id } = await params;
     const node = await getProviderNodeById(id);
 
@@ -95,6 +100,8 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error deleting provider node:", error);
     return NextResponse.json({ error: "Failed to delete provider node" }, { status: 500 });
   }

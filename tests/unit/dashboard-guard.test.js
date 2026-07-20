@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   validateApiKey: vi.fn(),
   getConsistentMachineId: vi.fn(),
   verifyDashboardAuthToken: vi.fn(),
+  getDashboardAuthSession: vi.fn(),
+  getUserById: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -23,6 +25,7 @@ vi.mock("next/server", () => ({
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   validateApiKey: mocks.validateApiKey,
+  getUserById: mocks.getUserById,
 }));
 
 vi.mock("@/shared/utils/machineId", () => ({
@@ -31,16 +34,17 @@ vi.mock("@/shared/utils/machineId", () => ({
 
 vi.mock("@/lib/auth/dashboardSession", () => ({
   verifyDashboardAuthToken: mocks.verifyDashboardAuthToken,
+  getDashboardAuthSession: mocks.getDashboardAuthSession,
 }));
 
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
-function request(pathname, headers = {}) {
+function request(pathname, headers = {}, authToken = null) {
   const normalizedHeaders = new Headers(headers);
   return {
     nextUrl: { pathname, searchParams: new URL(`http://localhost${pathname}`).searchParams },
     headers: normalizedHeaders,
-    cookies: { get: vi.fn(() => undefined) },
+    cookies: { get: vi.fn((name) => name === "auth_token" && authToken ? { value: authToken } : undefined) },
     url: `http://localhost${pathname}`,
   };
 }
@@ -54,10 +58,11 @@ describe("dashboard guard public LLM API access", () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
-  it("allows loopback public LLM API without API key", async () => {
+  it("rejects loopback public LLM API without API key or session", async () => {
     const response = await proxy(request("/v1/chat/completions", { host: "localhost:20128" }));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -71,13 +76,14 @@ describe("dashboard guard public LLM API access", () => {
     expect(response.body.error).toBe("API key required for remote API access");
   });
 
-  it("allows loopback peer IP regardless of Host", async () => {
+  it("rejects loopback peer without API key or session", async () => {
     const response = await proxy(request("/v1/chat/completions", {
       host: "localhost:20128",
       "x-9r-real-ip": "127.0.0.1",
     }));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -88,10 +94,11 @@ describe("dashboard guard public LLM API access", () => {
     expect(response.body.error).toBe("API key required for remote API access");
   });
 
-  it("allows loopback rewritten public LLM API without API key", async () => {
+  it("rejects loopback rewritten public LLM API without API key or session", async () => {
     const response = await proxy(request("/api/v1/chat/completions", { host: "localhost:20128" }));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -111,6 +118,13 @@ describe("dashboard guard public LLM API access", () => {
 
   it("rejects remote codex rewrite without API key", async () => {
     const response = await proxy(request("/codex/x", { host: "router.example.com" }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it("rejects remote top-level responses rewrite without API key", async () => {
+    const response = await proxy(request("/responses", { host: "router.example.com" }));
 
     expect(response.status).toBe(401);
     expect(response.body.error).toBe("API key required for remote API access");
@@ -188,6 +202,50 @@ describe("dashboard guard public LLM API access", () => {
   });
 });
 
+describe("dashboard guard role boundaries", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+  });
+
+  it.each([
+    "/api/provider-nodes",
+    "/api/proxy-pools",
+    "/api/combos",
+    "/api/models/alias",
+    "/api/settings",
+    "/api/members",
+  ])("rejects a member session from admin infrastructure route %s", async (pathname) => {
+    mocks.getDashboardAuthSession.mockResolvedValue({ sub: "member", sessionVersion: 3 });
+    mocks.getUserById.mockResolvedValue({ id: "member", role: "member", status: "active", sessionVersion: 3 });
+
+    const response = await proxy(request(pathname, { host: "localhost:20128" }, "member-token"));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Administrator access required");
+  });
+
+  it("allows a current active admin session to global infrastructure", async () => {
+    mocks.getDashboardAuthSession.mockResolvedValue({ sub: "admin", sessionVersion: 5 });
+    mocks.getUserById.mockResolvedValue({ id: "admin", role: "admin", status: "active", sessionVersion: 5 });
+
+    const response = await proxy(request("/api/provider-nodes", { host: "localhost:20128" }, "admin-token"));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects an admin token after role change or session revocation", async () => {
+    mocks.getDashboardAuthSession.mockResolvedValue({ sub: "admin", sessionVersion: 4 });
+    mocks.getUserById.mockResolvedValue({ id: "admin", role: "member", status: "active", sessionVersion: 5 });
+
+    const response = await proxy(request("/api/provider-nodes", { host: "localhost:20128" }, "stale-admin-token"));
+
+    expect(response.status).toBe(403);
+  });
+});
+
 describe("dashboard guard local-only access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -216,7 +274,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("allows local-only route on loopback when requireLogin=false", async () => {
+  it("rejects local-only route on loopback even when stale settings disable login", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
@@ -224,7 +282,8 @@ describe("dashboard guard local-only access", () => {
       origin: "http://localhost:20128",
     }));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Local only: CLI token required");
   });
 
   it("rejects local-only route from tunnel host even when requireLogin=false", async () => {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getProviderConnections } from "@/lib/localDb";
+import { getAccessibleProviderConnections } from "@/lib/localDb";
+import { requireUser } from "@/lib/auth/authorization";
 import { backfillCodexEmails } from "@/lib/oauth/providers";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 
@@ -13,10 +14,14 @@ const SAFE_FIELDS = [
 
 const SAFE_PSD_FIELDS = [
   "baseUrl", "azureEndpoint", "deployment", "apiVersion", "accountId",
-  "region", "projectId", "resourceUrl", "proxyPoolId",
-  "connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy",
+  "region", "projectId", "resourceUrl",
   "githubLogin", "githubName", "githubEmail", "githubUserId",
   "username", "firstName", "lastName", "authMethod", "authKind",
+  "profileArn",
+];
+const MEMBER_SAFE_PSD_FIELDS = [
+  "accountId", "region", "projectId", "githubLogin", "githubName", "githubEmail",
+  "githubUserId", "username", "firstName", "lastName", "authMethod", "authKind",
   "profileArn",
 ];
 
@@ -29,13 +34,14 @@ function maskName(name) {
   return name;
 }
 
-function sanitize(c) {
+function sanitize(c, principal) {
   const safe = {};
   for (const f of SAFE_FIELDS) if (c[f] !== undefined) safe[f] = c[f];
   if (safe.name) safe.name = maskName(safe.name);
   if (c.providerSpecificData) {
     const psd = {};
-    for (const f of SAFE_PSD_FIELDS) {
+    const safeProviderFields = principal.role === "admin" ? SAFE_PSD_FIELDS : MEMBER_SAFE_PSD_FIELDS;
+    for (const f of safeProviderFields) {
       if (c.providerSpecificData[f] !== undefined) psd[f] = c.providerSpecificData[f];
     }
     safe.providerSpecificData = psd;
@@ -76,7 +82,8 @@ function sortConnections(connections, sort) {
 
 export async function GET(request) {
   try {
-    await backfillCodexEmails();
+    const principal = await requireUser(request);
+    if (principal.role === "admin") await backfillCodexEmails();
 
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider") || "all";
@@ -85,7 +92,7 @@ export async function GET(request) {
     const page = parsePositiveInt(searchParams.get("page"), 1);
     const pageSize = Math.min(parsePositiveInt(searchParams.get("pageSize"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
 
-    const allConnections = await getProviderConnections();
+    const allConnections = await getAccessibleProviderConnections(principal);
     const eligibleConnections = allConnections.filter(isUsageEligible);
     const providerOptions = Array.from(new Set(eligibleConnections.map((conn) => conn.provider))).sort();
 
@@ -104,7 +111,7 @@ export async function GET(request) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, totalPages);
     const offset = (currentPage - 1) * pageSize;
-    const pageConnections = sortedConnections.slice(offset, offset + pageSize).map(sanitize);
+    const pageConnections = sortedConnections.slice(offset, offset + pageSize).map((connection) => sanitize(connection, principal));
 
     return NextResponse.json({
       connections: pageConnections,

@@ -19,8 +19,23 @@ import {
   getXaiSessionStatus,
   clearXaiSession,
 } from "@/lib/oauth/utils/server";
+import { AuthorizationError, authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
+import { bindOAuthOwner, isOAuthOwner } from "@/lib/oauth/ownerState";
 
-async function completeXaiManualCode(code, state) {
+function normalizeMemberOAuthMeta(provider, principal, meta = {}) {
+  if (principal.role === "admin") return meta;
+  if (provider === "gitlab") {
+    const defaultBaseUrl = getProvider(provider)?.config?.defaultBaseUrl;
+    const requestedBaseUrl = String(meta.baseUrl || defaultBaseUrl || "").replace(/\/$/, "");
+    if (requestedBaseUrl !== String(defaultBaseUrl || "").replace(/\/$/, "")) {
+      throw new AuthorizationError("Custom GitLab hosts require administrator access", 403);
+    }
+    return { ...meta, baseUrl: defaultBaseUrl };
+  }
+  return meta;
+}
+
+async function completeXaiManualCode(code, state, ownerUserId) {
   const session = state ? getXaiSessionStatus(state) : null;
   if (!session) {
     throw new Error("xAI OAuth session not found; restart the login flow and paste the code again");
@@ -43,6 +58,7 @@ async function completeXaiManualCode(code, state) {
         ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
         : null,
       testStatus: "active",
+      ownerUserId,
     });
     clearXaiSession(state);
     stopXaiProxy();
@@ -68,6 +84,7 @@ async function completeXaiManualCode(code, state) {
 // GET /api/oauth/[provider]/device-code - Request device code (for device_code flow)
 export async function GET(request, { params }) {
   try {
+    const principal = await requireUser(request);
     const { provider, action } = await params;
     const { searchParams } = new URL(request.url);
 
@@ -77,7 +94,9 @@ export async function GET(request, { params }) {
       const reservedParams = new Set(["redirect_uri"]);
       const meta = {};
       searchParams.forEach((value, key) => { if (!reservedParams.has(key)) meta[key] = value; });
-      const authData = await generateAuthData(provider, redirectUri, Object.keys(meta).length ? meta : undefined);
+      const safeMeta = normalizeMemberOAuthMeta(provider, principal, meta);
+      const authData = await generateAuthData(provider, redirectUri, Object.keys(safeMeta).length ? safeMeta : undefined);
+      await bindOAuthOwner(authData.state, principal.userId);
       return NextResponse.json(authData);
     }
 
@@ -98,8 +117,8 @@ export async function GET(request, { params }) {
       let serverSide = false;
       if (result.success && state && codeVerifier && redirectUri) {
         serverSide = provider === "xai"
-          ? registerXaiSession({ state, codeVerifier, redirectUri })
-          : registerCodexSession({ state, codeVerifier, redirectUri });
+          ? registerXaiSession({ state, codeVerifier, redirectUri, ownerUserId: principal.userId })
+          : registerCodexSession({ state, codeVerifier, redirectUri, ownerUserId: principal.userId });
       }
       return NextResponse.json({ ...result, serverSide });
     }
@@ -114,8 +133,16 @@ export async function GET(request, { params }) {
       }
       const session = provider === "xai" ? getXaiSessionStatus(state) : getCodexSessionStatus(state);
       if (!session) return NextResponse.json({ status: "unknown" });
+      if (session.ownerUserId !== principal.userId) {
+        return NextResponse.json({ error: "OAuth session not found" }, { status: 404 });
+      }
       if (session.status === "done" || session.status === "error") {
-        const payload = { ...session };
+        const payload = {
+          status: session.status,
+          connectionId: session.connectionId || null,
+          email: session.email || null,
+          error: session.error || null,
+        };
         if (provider === "xai") clearXaiSession(state);
         else clearCodexSession(state);
         return NextResponse.json(payload);
@@ -126,6 +153,11 @@ export async function GET(request, { params }) {
     if (action === "stop-proxy") {
       if (!["codex", "xai"].includes(provider)) {
         return NextResponse.json({ error: "Proxy only supported for codex/xai" }, { status: 400 });
+      }
+      const state = searchParams.get("state");
+      const session = state ? (provider === "xai" ? getXaiSessionStatus(state) : getCodexSessionStatus(state)) : null;
+      if (!session || session.ownerUserId !== principal.userId) {
+        return NextResponse.json({ error: "OAuth session not found" }, { status: 404 });
       }
       if (provider === "xai") stopXaiProxy();
       else stopCodexProxy();
@@ -142,6 +174,12 @@ export async function GET(request, { params }) {
       const startUrl = searchParams.get("start_url");
       const region = searchParams.get("region");
       const authMethod = searchParams.get("auth_method");
+      if (principal.role !== "admin" && provider === "kiro" && startUrl) {
+        const defaultStartUrl = getProvider(provider)?.config?.startUrl;
+        if (startUrl.replace(/\/$/, "") !== String(defaultStartUrl || "").replace(/\/$/, "")) {
+          return NextResponse.json({ error: "Custom Kiro identity centers require administrator access" }, { status: 403 });
+        }
+      }
       const deviceOptions = provider === "kiro"
         ? {
             ...(startUrl ? { startUrl } : {}),
@@ -167,6 +205,7 @@ export async function GET(request, { params }) {
         // Qwen and other PKCE providers
         deviceData = await requestDeviceCode(provider, authData.codeChallenge, deviceOptions);
       }
+      await bindOAuthOwner(deviceData.device_code || deviceData.deviceCode, principal.userId);
 
       return NextResponse.json({
         ...deviceData,
@@ -178,6 +217,8 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("OAuth GET error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -187,6 +228,7 @@ export async function GET(request, { params }) {
 // POST /api/oauth/[provider]/poll - Poll for token (device_code flow)
 export async function POST(request, { params }) {
   try {
+    const principal = await requireUser(request);
     const { provider, action } = await params;
     let body;
     try {
@@ -197,6 +239,9 @@ export async function POST(request, { params }) {
 
     if (action === "exchange") {
       const { code, redirectUri, codeVerifier, state, meta } = body;
+      if (!state || !await isOAuthOwner(state, principal.userId, { consume: true })) {
+        return NextResponse.json({ error: "OAuth session not found" }, { status: 404 });
+      }
 
       // Detect if "code" is actually a raw JWT access token (starts with eyJ)
       if (code && code.startsWith("eyJ") && code.includes(".")) {
@@ -227,8 +272,8 @@ export async function POST(request, { params }) {
           email: email || null,
           providerSpecificData,
           testStatus: "active",
+          ownerUserId: principal.userId,
         });
-
         return NextResponse.json({
           success: true,
           connection: {
@@ -247,7 +292,14 @@ export async function POST(request, { params }) {
       }
 
       // Exchange code for tokens (meta carries provider-specific params, e.g. gitlab clientId/baseUrl)
-      const tokenData = await exchangeTokens(provider, code, redirectUri, codeVerifier, state, meta);
+      const tokenData = await exchangeTokens(
+        provider,
+        code,
+        redirectUri,
+        codeVerifier,
+        state,
+        normalizeMemberOAuthMeta(provider, principal, meta)
+      );
 
       // Save to database
       const connection = await createProviderConnection({
@@ -258,8 +310,8 @@ export async function POST(request, { params }) {
           ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() 
           : null,
         testStatus: "active",
+        ownerUserId: principal.userId,
       });
-
       return NextResponse.json({ 
         success: true, 
         connection: {
@@ -276,6 +328,9 @@ export async function POST(request, { params }) {
 
       if (!deviceCode) {
         return NextResponse.json({ error: "Missing device code" }, { status: 400 });
+      }
+      if (!await isOAuthOwner(deviceCode, principal.userId, { consume: true })) {
+        return NextResponse.json({ error: "OAuth device session not found" }, { status: 404 });
       }
 
       // Providers that don't use PKCE for device code
@@ -312,6 +367,7 @@ export async function POST(request, { params }) {
             ? new Date(Date.now() + result.tokens.expiresIn * 1000).toISOString() 
             : null,
           testStatus: "active",
+          ownerUserId: principal.userId,
         });
 
         return NextResponse.json({ 
@@ -325,6 +381,7 @@ export async function POST(request, { params }) {
 
       // Still pending or error - don't create connection for pending states
       const isPending = result.pending || result.error === "authorization_pending" || result.error === "slow_down";
+      if (isPending) await bindOAuthOwner(deviceCode, principal.userId);
       
       return NextResponse.json({
         success: false,
@@ -339,12 +396,18 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: "Manual code only supported for xai" }, { status: 400 });
       }
       const { code, state } = body;
-      const connection = await completeXaiManualCode(String(code || "").trim(), String(state || "").trim());
+      const session = getXaiSessionStatus(String(state || "").trim());
+      if (!session || session.ownerUserId !== principal.userId) {
+        return NextResponse.json({ error: "OAuth session not found" }, { status: 404 });
+      }
+      const connection = await completeXaiManualCode(String(code || "").trim(), String(state || "").trim(), session.ownerUserId);
       return NextResponse.json({ success: true, connection });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("OAuth POST error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

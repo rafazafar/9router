@@ -9,6 +9,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
+import { saveRequestUsage } from "@/lib/usageDb.js";
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -29,7 +30,8 @@ export async function handleStt(request) {
   log.request("POST", `/v1/audio/transcriptions | ${modelStr}`);
 
   const settings = await getSettings();
-  const authorization = await authorizeApiKey(extractApiKey(request), settings.requireApiKey);
+  const apiKey = extractApiKey(request);
+  const authorization = await authorizeApiKey(apiKey, settings.requireApiKey, request);
   if (!authorization.allowed) return errorResponse(authorization.status, authorization.message);
   const apiKeyPolicy = authorization.apiKey;
 
@@ -44,8 +46,14 @@ export async function handleStt(request) {
 
   // noAuth providers
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
+    if (apiKeyPolicy?.allowedConnectionIds && !apiKeyPolicy.allowedConnectionIds.includes("__noauth__")) {
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `No access to system provider: ${provider}`);
+    }
     const result = await handleSttCore({ provider, model, formData, sttConfig: AI_PROVIDERS[provider]?.sttConfig });
-    if (result.success) return result.response;
+    if (result.success) {
+      await saveRequestUsage({ provider, model, tokens: {}, apiKey, userId: apiKeyPolicy?.ownerUserId || null, endpoint: "/v1/audio/transcriptions" });
+      return result.response;
+    }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "STT failed");
   }
 
@@ -71,7 +79,10 @@ export async function handleStt(request) {
 
     const result = await handleSttCore({ provider, model, formData, credentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      await saveRequestUsage({ provider, model, tokens: result.usage || {}, connectionId: credentials.connectionId, apiKey, userId: apiKeyPolicy?.ownerUserId || null, endpoint: "/v1/audio/transcriptions" });
+      return result.response;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
     if (shouldFallback) {

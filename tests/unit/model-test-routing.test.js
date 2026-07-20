@@ -13,6 +13,11 @@ vi.mock("@/shared/utils/machineId", () => ({
   getConsistentMachineId: mocks.getConsistentMachineId,
 }));
 
+vi.mock("@/lib/auth/authorization", () => ({
+  requireAdmin: vi.fn(async () => ({ userId: "admin", role: "admin" })),
+  authorizationErrorResponse: vi.fn(() => null),
+}));
+
 vi.mock("next/server", () => ({
   NextResponse: {
     json(body, init = {}) {

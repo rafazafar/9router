@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { requireUser } from "@/lib/auth/authorization";
 
 /**
  * POST /api/oauth/kiro/import
@@ -10,6 +11,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
+    const principal = await requireUser(request);
     const { refreshToken, clientId, clientSecret, region, authMethod, profileArn } = await request.json();
 
     if (!refreshToken || typeof refreshToken !== "string") {
@@ -49,6 +51,7 @@ export async function POST(request) {
         ...(isIdc ? { clientId, clientSecret, region: region || "us-east-1" } : {}),
       },
       testStatus: "active",
+      ownerUserId: principal.userId,
     });
 
     return NextResponse.json({

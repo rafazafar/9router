@@ -13,6 +13,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { saveRequestUsage } from "@/lib/usageDb.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -46,7 +47,7 @@ export async function handleSearch(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
-  const authorization = await authorizeApiKey(apiKey, settings.requireApiKey);
+  const authorization = await authorizeApiKey(apiKey, settings.requireApiKey, request);
   if (!authorization.allowed) return errorResponse(authorization.status, authorization.message);
   const apiKeyPolicy = authorization.apiKey;
 
@@ -123,6 +124,9 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKeyPo
 
   // No-auth providers (e.g. searxng) bypass credential lookup
   if (resolvedProvider.noAuth) {
+    if (apiKeyPolicy?.allowedConnectionIds && !apiKeyPolicy.allowedConnectionIds.includes("__noauth__")) {
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `No access to system provider: ${providerId}`);
+    }
     log.info("AUTH", `\x1b[32m${providerId} no-auth mode\x1b[0m`);
     const result = await handleSearchCore({
       body: coreBody,
@@ -131,7 +135,10 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKeyPo
       credentials: null,
       log
     });
-    if (result.success) return result.response;
+    if (result.success) {
+      await saveRequestUsage({ provider: providerId, model: "search", tokens: {}, apiKey: extractApiKey(request), userId: apiKeyPolicy?.ownerUserId || null, endpoint: "/v1/search" });
+      return result.response;
+    }
     return result.response;
   }
 
@@ -181,7 +188,10 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKeyPo
       }
     });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      await saveRequestUsage({ provider: providerId, model: "search", tokens: result.usage || {}, connectionId: credentials.connectionId, apiKey: extractApiKey(request), userId: apiKeyPolicy?.ownerUserId || null, endpoint: "/v1/search" });
+      return result.response;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId);
 

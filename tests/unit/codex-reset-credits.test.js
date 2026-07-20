@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   refreshAndUpdateCredentials: vi.fn(),
   getCodexRateLimitResetCredits: vi.fn(),
   consumeCodexRateLimitResetCredit: vi.fn(),
+  requireUser: vi.fn(),
 }));
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
@@ -17,6 +18,13 @@ vi.mock("open-sse/index.js", () => ({}));
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,
+  getAccessibleProviderConnectionById: mocks.getProviderConnectionById,
+  canManageProviderConnection: vi.fn(() => true),
+}));
+
+vi.mock("@/lib/auth/authorization", () => ({
+  requireUser: mocks.requireUser,
+  authorizationErrorResponse: vi.fn(() => null),
 }));
 
 vi.mock("@/lib/network/connectionProxy", () => ({
@@ -37,6 +45,7 @@ describe("Codex reset credits", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.resolveConnectionProxyConfig.mockResolvedValue({});
+    mocks.requireUser.mockResolvedValue({ userId: "admin", role: "admin" });
   });
 
   it("returns normalized reset credit expiry details", async () => {

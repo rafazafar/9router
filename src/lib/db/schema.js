@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 7;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -43,11 +43,13 @@ export const TABLES = {
       data: "TEXT NOT NULL",
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
+      ownerUserId: "TEXT",
     },
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_pc_provider ON providerConnections(provider)",
       "CREATE INDEX IF NOT EXISTS idx_pc_provider_active ON providerConnections(provider, isActive)",
       "CREATE INDEX IF NOT EXISTS idx_pc_priority ON providerConnections(provider, priority)",
+      "CREATE INDEX IF NOT EXISTS idx_pc_owner ON providerConnections(ownerUserId)",
     ],
   },
   providerNodes: {
@@ -89,8 +91,53 @@ export const TABLES = {
       tokenCount: "INTEGER DEFAULT 0",
       quotaDate: "TEXT",
       allowedConnectionIds: "TEXT",
+      ownerUserId: "TEXT",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)",
+      "CREATE INDEX IF NOT EXISTS idx_ak_owner ON apiKeys(ownerUserId)",
+    ],
+  },
+  users: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      username: "TEXT UNIQUE NOT NULL",
+      email: "TEXT",
+      displayName: "TEXT",
+      passwordHash: "TEXT",
+      role: "TEXT NOT NULL DEFAULT 'member'",
+      status: "TEXT NOT NULL DEFAULT 'active'",
+      oidcIssuer: "TEXT",
+      oidcSubject: "TEXT",
+      sessionVersion: "INTEGER NOT NULL DEFAULT 1",
+      createdAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    indexes: [
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc ON users(oidcIssuer, oidcSubject) WHERE oidcIssuer IS NOT NULL AND oidcSubject IS NOT NULL",
+      "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+    ],
+  },
+  connectionGrants: {
+    columns: {
+      connectionId: "TEXT NOT NULL",
+      userId: "TEXT NOT NULL",
+      grantedByUserId: "TEXT NOT NULL",
+      createdAt: "TEXT NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (connectionId, userId)",
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_cg_user ON connectionGrants(userId)",
+      "CREATE INDEX IF NOT EXISTS idx_cg_connection ON connectionGrants(connectionId)",
+    ],
+  },
+  oauthStates: {
+    columns: {
+      value: "TEXT PRIMARY KEY",
+      userId: "TEXT NOT NULL",
+      expiresAt: "TEXT NOT NULL",
+    },
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_oauth_states_expiry ON oauthStates(expiresAt)"],
   },
   combos: {
     columns: {
@@ -127,12 +174,14 @@ export const TABLES = {
       status: "TEXT",
       tokens: "TEXT",
       meta: "TEXT",
+      userId: "TEXT",
     },
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_uh_ts ON usageHistory(timestamp DESC)",
       "CREATE INDEX IF NOT EXISTS idx_uh_provider ON usageHistory(provider)",
       "CREATE INDEX IF NOT EXISTS idx_uh_model ON usageHistory(model)",
       "CREATE INDEX IF NOT EXISTS idx_uh_conn ON usageHistory(connectionId)",
+      "CREATE INDEX IF NOT EXISTS idx_uh_user ON usageHistory(userId)",
     ],
   },
   usageDaily: {
@@ -149,6 +198,7 @@ export const TABLES = {
       model: "TEXT",
       connectionId: "TEXT",
       status: "TEXT",
+      userId: "TEXT",
       data: "TEXT NOT NULL",
     },
     indexes: [
@@ -156,6 +206,7 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_provider ON requestDetails(provider)",
       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
+      "CREATE INDEX IF NOT EXISTS idx_rd_user ON requestDetails(userId)",
     ],
   },
 };

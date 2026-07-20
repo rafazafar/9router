@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { requireUser } from "@/lib/auth/authorization";
 
 /**
  * POST /api/oauth/kiro/api-key
@@ -10,6 +11,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
+    const principal = await requireUser(request);
     const { apiKey, region } = await request.json();
 
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
@@ -46,6 +48,7 @@ export async function POST(request) {
         provider: "API Key",
       },
       testStatus: "active",
+      ownerUserId: principal.userId,
     });
 
     return NextResponse.json({

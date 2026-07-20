@@ -2,7 +2,8 @@
 // Kept for backward compatibility with existing imports.
 export {
   getSettings, updateSettings, isCloudEnabled, getCloudUrl,
-  getProviderConnections, getProviderConnectionById,
+  getProviderConnections, getProviderConnectionById, getAccessibleProviderConnections,
+  getAccessibleProviderConnectionById, canManageProviderConnection,
   createProviderConnection, updateProviderConnection,
   deleteProviderConnection, deleteProviderConnectionsByProvider,
   reorderProviderConnections, cleanupProviderConnections,
@@ -17,5 +18,8 @@ export {
   getCustomModels, addCustomModel, deleteCustomModel,
   getMitmAlias, setMitmAliasAll,
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
+  getUsers, getUserById, getUserByUsername, getUserByOidcIdentity,
+  getInvitedOidcUserByEmail, createUser, updateUser, bindUserOidcIdentity, migrateUserOidcIssuer, clearUserPassword, deleteUser,
+  getConnectionGrants, grantConnection, revokeConnectionGrant, replaceConnectionGrants,
   exportDb, importDb,
 } from "@/lib/db/index.js";

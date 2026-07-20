@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
+import { requireUser } from "@/lib/auth/authorization";
 
 /**
  * POST /api/oauth/codex/bulk-import
@@ -17,6 +18,7 @@ import { extractCodexAccountInfo } from "@/lib/oauth/providers";
  * Tokens are NEVER echoed back in the response.
  */
 export async function POST(request) {
+  const principal = await requireUser(request);
   let body;
   try {
     body = await request.json();
@@ -107,6 +109,7 @@ export async function POST(request) {
         provider: "codex",
         authType: "oauth",
         ...item,
+        ownerUserId: principal.userId,
       });
 
       results.push({ index: i, ok: true, id: created.id });

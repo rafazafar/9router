@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 const DENO_V2_API = "https://api.deno.com/v2";
 
@@ -46,6 +47,7 @@ const DENO_RELAY_CODE = `Deno.serve(async (request) => {
 
 export async function POST(request) {
   try {
+    await requireAdmin(request);
     const body = await request.json();
     const denoToken = body.denoToken?.trim();
     const orgDomain = body.orgDomain?.trim();
@@ -169,6 +171,8 @@ export async function POST(request) {
 
     return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error deploying Deno Deploy relay:", error);
     return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });
   }

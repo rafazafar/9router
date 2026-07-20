@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { killAppProcesses, spawnUpdaterAndExit } from "@/lib/appUpdater";
+import { authorizationErrorResponse, requireAdminOrCli } from "@/lib/auth/authorization";
 
-export async function POST() {
+export async function POST(request) {
+  try {
+    await requireAdminOrCli(request);
+  } catch (error) {
+    return authorizationErrorResponse(error) || NextResponse.json({ error: error.message }, { status: 500 });
+  }
   if (process.env.NODE_ENV !== "production") {
     return NextResponse.json(
       { success: false, message: "Update is only available in production build (9router CLI)" },

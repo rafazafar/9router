@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 export async function GET(request) {
   try {
+    await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const file = searchParams.get("file");
 
@@ -39,6 +41,8 @@ export async function GET(request) {
 
     return NextResponse.json({ success: true, content });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error("Error loading file:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

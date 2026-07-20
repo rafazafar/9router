@@ -14,6 +14,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { saveRequestUsage } from "@/lib/usageDb.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -49,7 +50,7 @@ export async function handleFetch(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
-  const authorization = await authorizeApiKey(apiKey, settings.requireApiKey);
+  const authorization = await authorizeApiKey(apiKey, settings.requireApiKey, request);
   if (!authorization.allowed) return errorResponse(authorization.status, authorization.message);
   const apiKeyPolicy = authorization.apiKey;
 
@@ -90,7 +91,7 @@ export async function handleFetch(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, apiKeyPolicy),
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, apiKeyPolicy, apiKey),
       log,
       comboName: providerInput,
       comboStrategy,
@@ -98,10 +99,10 @@ export async function handleFetch(request) {
     });
   }
 
-  return handleSingleProviderFetch(body, providerInput, apiKeyPolicy);
+  return handleSingleProviderFetch(body, providerInput, apiKeyPolicy, apiKey);
 }
 
-async function handleSingleProviderFetch(body, providerInput, apiKeyPolicy) {
+async function handleSingleProviderFetch(body, providerInput, apiKeyPolicy, apiKey) {
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -127,6 +128,9 @@ async function handleSingleProviderFetch(body, providerInput, apiKeyPolicy) {
 
   // No-auth fetch path (kept for parity though no current fetch provider sets noAuth)
   if (resolvedProvider.noAuth) {
+    if (apiKeyPolicy?.allowedConnectionIds && !apiKeyPolicy.allowedConnectionIds.includes("__noauth__")) {
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `No access to system provider: ${providerId}`);
+    }
     log.info("AUTH", `\x1b[32m${providerId} no-auth mode\x1b[0m`);
     const result = await handleFetchCore({
       url: targetUrl,
@@ -138,6 +142,7 @@ async function handleSingleProviderFetch(body, providerInput, apiKeyPolicy) {
       log
     });
     if (result.success) {
+      await saveRequestUsage({ provider: providerId, model: "fetch", tokens: result.usage || {}, apiKey, userId: apiKeyPolicy?.ownerUserId || null, endpoint: "/v1/web/fetch" });
       return new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
@@ -194,6 +199,7 @@ async function handleSingleProviderFetch(body, providerInput, apiKeyPolicy) {
     });
 
     if (result.success) {
+      await saveRequestUsage({ provider: providerId, model: "fetch", tokens: result.usage || {}, connectionId: credentials.connectionId, apiKey, userId: apiKeyPolicy?.ownerUserId || null, endpoint: "/v1/web/fetch" });
       return new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });

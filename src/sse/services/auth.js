@@ -4,6 +4,7 @@ import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLock
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
+import { getCurrentPrincipal, getEffectiveApiKeyConnectionIds, hasPresentedDashboardSession } from "@/lib/auth/authorization";
 
 // Mutex to prevent race conditions during account selection
 let selectionMutex = Promise.resolve();
@@ -35,6 +36,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
     // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
+      if (allowedConnectionIds !== undefined && !allowedConnectionIds.includes("__noauth__")) return null;
       const settings = await getSettings();
       const override = (settings.providerStrategies || {})[providerId] || {};
       const strategy = override.rotateStrategy || "none";
@@ -61,7 +63,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
 
     const allConnections = await getProviderConnections({ provider: providerId, isActive: true });
-    const connections = allowedConnectionIds?.length
+    const connections = allowedConnectionIds !== undefined
       ? allConnections.filter((connection) => allowedConnectionIds.includes(connection.id))
       : allConnections;
     log.debug("AUTH", `${provider} | permitted connections: ${connections.length}/${allConnections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
@@ -311,7 +313,16 @@ export function extractApiKey(request) {
     return xApiKey;
   }
 
-  return null;
+  const googleApiKey = request.headers.get("x-goog-api-key");
+  if (googleApiKey) {
+    return googleApiKey;
+  }
+
+  try {
+    return new URL(request.url).searchParams.get("key");
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -322,15 +333,29 @@ export async function isValidApiKey(apiKey) {
   return await validateApiKey(apiKey);
 }
 
-export async function authorizeApiKey(apiKey, requireApiKey) {
-  if (!apiKey) return requireApiKey ? { allowed: false, status: 401, message: "Missing API key" } : { allowed: true, apiKey: null };
+export async function authorizeApiKey(apiKey, requireApiKey, request = null) {
+  if (!apiKey) {
+    if (requireApiKey) return { allowed: false, status: 401, message: "Missing API key" };
+    const principal = request ? await getCurrentPrincipal(request) : null;
+    if (hasPresentedDashboardSession(request) && !principal) {
+      return { allowed: false, status: 401, message: "Invalid session" };
+    }
+    if (!principal) return { allowed: true, apiKey: null };
+    if (principal.role === "admin") {
+      return { allowed: true, apiKey: { ownerUserId: principal.userId } };
+    }
+    const { getAccessibleProviderConnections } = await import("@/lib/db/index.js");
+    const connections = await getAccessibleProviderConnections(principal, { isActive: true });
+    return { allowed: true, apiKey: { ownerUserId: principal.userId, allowedConnectionIds: connections.map((connection) => connection.id) } };
+  }
   const reservation = await reserveApiKeyRequest(apiKey);
   if (reservation.reason === "invalid") {
-    return requireApiKey ? { allowed: false, status: 401, message: "Invalid API key" } : { allowed: true, apiKey: null };
+    return { allowed: false, status: 401, message: "Invalid API key" };
   }
   if (!reservation.allowed) {
     const type = reservation.reason === "tokens" ? "token" : "request";
     return { allowed: false, status: 429, message: `Daily API key ${type} limit reached` };
   }
-  return { allowed: true, apiKey: reservation.apiKey };
+  const allowedConnectionIds = await getEffectiveApiKeyConnectionIds(reservation.apiKey);
+  return { allowed: true, apiKey: { ...reservation.apiKey, allowedConnectionIds } };
 }

@@ -33,6 +33,18 @@ function processSSEMessage(msg, state) {
       state.usage.input_tokens = parsed.response.usage.input_tokens || 0;
       state.usage.output_tokens = parsed.response.usage.output_tokens || 0;
       state.usage.total_tokens = parsed.response.usage.total_tokens || 0;
+      if (parsed.response.usage.cached_tokens !== undefined) {
+        state.usage.cached_tokens = parsed.response.usage.cached_tokens;
+      }
+      if (parsed.response.usage.reasoning_tokens !== undefined) {
+        state.usage.reasoning_tokens = parsed.response.usage.reasoning_tokens;
+      }
+      if (parsed.response.usage.input_tokens_details) {
+        state.usage.input_tokens_details = parsed.response.usage.input_tokens_details;
+      }
+      if (parsed.response.usage.output_tokens_details) {
+        state.usage.output_tokens_details = parsed.response.usage.output_tokens_details;
+      }
     }
   } else if (eventType === "response.failed") {
     state.status = "failed";

@@ -44,7 +44,7 @@ export async function handleEmbeddings(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
-  const authorization = await authorizeApiKey(apiKey, settings.requireApiKey);
+  const authorization = await authorizeApiKey(apiKey, settings.requireApiKey, request);
   if (!authorization.allowed) return errorResponse(authorization.status, authorization.message);
   const apiKeyPolicy = authorization.apiKey;
 
@@ -118,8 +118,8 @@ export async function handleEmbeddings(request) {
     });
 
     if (result.success) {
-      if (apiKey && result.usage) {
-        await saveRequestUsage({ provider, model, tokens: result.usage, connectionId: credentials.connectionId, apiKey, endpoint: url.pathname });
+      if (result.usage) {
+        await saveRequestUsage({ provider, model, tokens: result.usage, connectionId: credentials.connectionId, apiKey, userId: apiKeyPolicy?.ownerUserId || null, endpoint: url.pathname });
       }
       return result.response;
     }

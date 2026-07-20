@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 import { isLocalRequest } from "@/dashboardGuard";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 // Fetch with timeout wrapper
 const fetchWithTimeout = (url, options, timeout = 10000) => {
@@ -54,6 +55,7 @@ const getChatErrorMessage = (status) => {
 // POST /api/provider-nodes/validate - Validate API key against base URL
 export async function POST(request) {
   try {
+    await requireAdmin(request);
     const body = await request.json();
     const { baseUrl, apiKey, type, modelId } = body;
 
@@ -197,6 +199,8 @@ export async function POST(request) {
 
     return NextResponse.json({ valid: false, error: getModelsErrorMessage(res.status) });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     const errorMessage = getErrorMessage(error);
     console.error("Error validating provider node:", {
       message: error.message,

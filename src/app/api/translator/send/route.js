@@ -1,5 +1,6 @@
 import { getProviderConnections, updateProviderConnection } from "@/lib/localDb.js";
 import { getExecutor } from "open-sse/index.js";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 async function persistRefreshedCredentials(connection, newCredentials) {
   const updateData = {};
@@ -34,6 +35,7 @@ async function persistRefreshedCredentials(connection, newCredentials) {
 
 export async function POST(request) {
   try {
+    await requireAdmin(request);
     const { provider, model, body } = await request.json();
 
     if (!provider || !model || !body) {
@@ -88,6 +90,8 @@ export async function POST(request) {
       }
     });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error("[Translator] Send error:", error);
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }

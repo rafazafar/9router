@@ -1,7 +1,8 @@
 // Ensure proxyFetch is loaded to patch globalThis.fetch
 import "open-sse/index.js";
 
-import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
+import { canManageProviderConnection, getAccessibleProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
+import { authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
 import { getUsageForProvider } from "open-sse/services/usage.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -123,12 +124,16 @@ export async function GET(request, { params }) {
   let connection;
   try {
     const { connectionId } = await params;
+    const principal = await requireUser(request);
 
 
     // Get connection from database
-    connection = await getProviderConnectionById(connectionId);
+    connection = await getAccessibleProviderConnectionById(principal, connectionId);
     if (!connection) {
       return Response.json({ error: "Connection not found" }, { status: 404 });
+    }
+    if (!canManageProviderConnection(principal, connection)) {
+      return Response.json({ error: "Shared connection usage is managed by its owner" }, { status: 403 });
     }
 
     // Allow OAuth connections, plus whitelisted apikey providers (glm/minimax/kiro/...)
@@ -184,6 +189,8 @@ export async function GET(request, { params }) {
 
     return Response.json(usage);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Usage] ${provider}: ${error.message}`);
     return Response.json({ error: error.message }, { status: 500 });

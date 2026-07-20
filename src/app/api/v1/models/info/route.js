@@ -4,6 +4,8 @@ import { getModelKind } from "@/shared/constants/models";
 import { getModelAliases, getProviderConnections } from "@/lib/localDb";
 import { resolveModelAliasString } from "open-sse/services/model.js";
 import { getCanonicalFallbackAliases } from "open-sse/services/modelAliases.js";
+import { extractApiKey } from "@/sse/services/auth";
+import { authorizationErrorResponse, resolveRequestConnectionIds } from "@/lib/auth/authorization";
 
 const KIND_ENDPOINT = {
   llm: "/v1/chat/completions",
@@ -97,21 +99,40 @@ export async function GET(request) {
     );
   }
   let resolvedId = id;
+  let visibleProviderIds = null;
   try {
-    const [storedAliases, connections] = await Promise.all([getModelAliases(), getProviderConnections()]);
+    const apiKeyValue = extractApiKey(request);
+    const allowedConnectionIds = await resolveRequestConnectionIds(request, apiKeyValue);
+    const [storedAliases, allConnections] = await Promise.all([getModelAliases(), getProviderConnections()]);
+    const allowed = allowedConnectionIds === undefined ? null : new Set(allowedConnectionIds);
+    const connections = allowed ? allConnections.filter((connection) => allowed.has(connection.id)) : allConnections;
     const providerIds = new Set(
       connections.filter((connection) => connection.isActive !== false).map((connection) => connection.provider),
     );
+    visibleProviderIds = allowed ? providerIds : null;
     const aliases = {
       ...getCanonicalFallbackAliases({ providerIds, aliases: storedAliases }),
       ...storedAliases,
     };
     resolvedId = resolveModelAliasString(id, aliases).model;
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     return Response.json(
       { error: { message: error.message, type: "invalid_request_error", code: error.code } },
       { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
     );
+  }
+  if (visibleProviderIds) {
+    const slash = resolvedId.indexOf("/");
+    const alias = slash > 0 ? resolvedId.slice(0, slash) : "";
+    const providerId = ALIAS_TO_ID[alias] || alias;
+    if (!visibleProviderIds.has(providerId)) {
+      return Response.json(
+        { error: { message: `Model not found: ${id}`, type: "not_found" } },
+        { status: 404, headers: { "Access-Control-Allow-Origin": "*" } },
+      );
+    }
   }
   const info = lookup(resolvedId, kind);
   if (!info) {

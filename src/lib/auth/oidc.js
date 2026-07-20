@@ -232,3 +232,7 @@ export function pickOidcDisplayName(payload = {}) {
 export function pickOidcEmail(payload = {}) {
   return payload.email || "";
 }
+
+export function pickVerifiedOidcEmail(payload = {}) {
+  return payload.email_verified === true ? pickOidcEmail(payload) : "";
+}

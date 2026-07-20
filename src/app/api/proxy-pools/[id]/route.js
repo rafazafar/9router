@@ -5,6 +5,7 @@ import {
   getProxyPoolById,
   updateProxyPool,
 } from "@/models";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};
@@ -52,6 +53,7 @@ function countBoundConnections(connections = [], proxyPoolId) {
 // GET /api/proxy-pools/[id] - Get proxy pool
 export async function GET(request, { params }) {
   try {
+    await requireAdmin(request);
     const { id } = await params;
     const proxyPool = await getProxyPoolById(id);
 
@@ -61,6 +63,8 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ proxyPool });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error fetching proxy pool:", error);
     return NextResponse.json({ error: "Failed to fetch proxy pool" }, { status: 500 });
   }
@@ -69,6 +73,7 @@ export async function GET(request, { params }) {
 // PUT /api/proxy-pools/[id] - Update proxy pool
 export async function PUT(request, { params }) {
   try {
+    await requireAdmin(request);
     const { id } = await params;
     const existing = await getProxyPoolById(id);
 
@@ -86,6 +91,8 @@ export async function PUT(request, { params }) {
     const updated = await updateProxyPool(id, normalized.updates);
     return NextResponse.json({ proxyPool: updated });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error updating proxy pool:", error);
     return NextResponse.json({ error: "Failed to update proxy pool" }, { status: 500 });
   }
@@ -94,6 +101,7 @@ export async function PUT(request, { params }) {
 // DELETE /api/proxy-pools/[id] - Delete proxy pool
 export async function DELETE(request, { params }) {
   try {
+    await requireAdmin(request);
     const { id } = await params;
     const existing = await getProxyPoolById(id);
 
@@ -117,6 +125,8 @@ export async function DELETE(request, { params }) {
     await deleteProxyPool(id);
     return NextResponse.json({ success: true });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error deleting proxy pool:", error);
     return NextResponse.json({ error: "Failed to delete proxy pool" }, { status: 500 });
   }

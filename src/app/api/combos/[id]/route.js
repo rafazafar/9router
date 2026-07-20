@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -8,6 +9,7 @@ const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 // GET /api/combos/[id] - Get combo by ID
 export async function GET(request, { params }) {
   try {
+    await requireAdmin(request);
     const { id } = await params;
     const combo = await getComboById(id);
     
@@ -17,6 +19,8 @@ export async function GET(request, { params }) {
     
     return NextResponse.json(combo);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error fetching combo:", error);
     return NextResponse.json({ error: "Failed to fetch combo" }, { status: 500 });
   }
@@ -25,6 +29,7 @@ export async function GET(request, { params }) {
 // PUT /api/combos/[id] - Update combo
 export async function PUT(request, { params }) {
   try {
+    await requireAdmin(request);
     const { id } = await params;
     const body = await request.json();
     
@@ -55,6 +60,8 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(combo);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error updating combo:", error);
     return NextResponse.json({ error: "Failed to update combo" }, { status: 500 });
   }
@@ -63,6 +70,7 @@ export async function PUT(request, { params }) {
 // DELETE /api/combos/[id] - Delete combo
 export async function DELETE(request, { params }) {
   try {
+    await requireAdmin(request);
     const { id } = await params;
     const prev = await getComboById(id);
     const success = await deleteCombo(id);
@@ -75,6 +83,8 @@ export async function DELETE(request, { params }) {
     
     return NextResponse.json({ success: true });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error deleting combo:", error);
     return NextResponse.json({ error: "Failed to delete combo" }, { status: 500 });
   }

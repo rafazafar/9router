@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { normalizeKiroExternalIdpAuth } from "@/lib/oauth/kiroExternalIdp";
+import { requireUser } from "@/lib/auth/authorization";
 
 /**
  * POST /api/oauth/kiro/import-cli-proxy
@@ -8,6 +9,7 @@ import { normalizeKiroExternalIdpAuth } from "@/lib/oauth/kiroExternalIdp";
  */
 export async function POST(request) {
   try {
+    const principal = await requireUser(request);
     const body = await request.json();
     const rawAuth = body?.cliProxyAuth ?? body?.auth ?? body?.json ?? body;
     const tokenData = normalizeKiroExternalIdpAuth(rawAuth);
@@ -21,6 +23,7 @@ export async function POST(request) {
       email: tokenData.email || null,
       providerSpecificData: tokenData.providerSpecificData,
       testStatus: "active",
+      ownerUserId: principal.userId,
     });
 
     return NextResponse.json({

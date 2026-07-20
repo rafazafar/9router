@@ -157,6 +157,9 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
         return connection;
       }),
     }));
+    vi.doMock("@/lib/auth/authorization", () => ({
+      requireUser: vi.fn(async () => ({ userId: "admin", role: "admin" })),
+    }));
 
     const { POST } = await import("../../src/app/api/oauth/kiro/import-cli-proxy/route.js");
     const accessToken = makeJwt({
@@ -202,6 +205,7 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
         scope: TEST_SCOPE,
       },
       testStatus: "active",
+      ownerUserId: "admin",
     });
   });
 });

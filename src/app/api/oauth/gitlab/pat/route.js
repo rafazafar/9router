@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { requireUser } from "@/lib/auth/authorization";
 
 const GITLAB_DEFAULT_BASE = "https://gitlab.com";
 
@@ -9,6 +10,7 @@ const GITLAB_DEFAULT_BASE = "https://gitlab.com";
  */
 export async function POST(request) {
   try {
+    const principal = await requireUser(request);
     let body;
     try {
       body = await request.json();
@@ -21,6 +23,9 @@ export async function POST(request) {
       return NextResponse.json({ error: "Personal Access Token is required" }, { status: 400 });
     }
 
+    if (principal.role !== "admin" && baseUrl?.trim() && baseUrl.trim().replace(/\/$/, "") !== GITLAB_DEFAULT_BASE) {
+      return NextResponse.json({ error: "Custom GitLab hosts require administrator access" }, { status: 403 });
+    }
     const base = (baseUrl?.trim() || GITLAB_DEFAULT_BASE).replace(/\/$/, "");
 
     // Verify token by fetching current user
@@ -52,6 +57,7 @@ export async function POST(request) {
         baseUrl: base,
         authKind: "personal_access_token",
       },
+      ownerUserId: principal.userId,
     });
 
     return NextResponse.json({ success: true });

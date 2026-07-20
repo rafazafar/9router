@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { CursorService } from "@/lib/oauth/services/cursor";
 import { createProviderConnection } from "@/models";
+import { requireUser } from "@/lib/auth/authorization";
 
 /**
  * POST /api/oauth/cursor/import
@@ -12,6 +13,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
+    const principal = await requireUser(request);
     const { accessToken, machineId } = await request.json();
 
     if (!accessToken || typeof accessToken !== "string") {
@@ -54,6 +56,7 @@ export async function POST(request) {
         userId: userInfo?.userId,
       },
       testStatus: "active",
+      ownerUserId: principal.userId,
     });
 
     return NextResponse.json({

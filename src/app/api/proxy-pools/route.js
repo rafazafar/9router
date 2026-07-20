@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -44,6 +45,7 @@ function buildUsageMap(connections = []) {
 // GET /api/proxy-pools - List proxy pools
 export async function GET(request) {
   try {
+    await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const isActive = toBoolean(searchParams.get("isActive"));
     const includeUsage = searchParams.get("includeUsage") === "true";
@@ -69,6 +71,8 @@ export async function GET(request) {
 
     return NextResponse.json({ proxyPools: enrichedProxyPools });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error fetching proxy pools:", error);
     return NextResponse.json({ error: "Failed to fetch proxy pools" }, { status: 500 });
   }
@@ -77,6 +81,7 @@ export async function GET(request) {
 // POST /api/proxy-pools - Create proxy pool
 export async function POST(request) {
   try {
+    await requireAdmin(request);
     const body = await request.json();
     const normalized = normalizeProxyPoolInput(body);
 
@@ -87,6 +92,8 @@ export async function POST(request) {
     const proxyPool = await createProxyPool(normalized);
     return NextResponse.json({ proxyPool }, { status: 201 });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error creating proxy pool:", error);
     return NextResponse.json({ error: "Failed to create proxy pool" }, { status: 500 });
   }

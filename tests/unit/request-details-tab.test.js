@@ -6,6 +6,11 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
+vi.mock("@/lib/auth/authorization", () => ({
+  requireUser: vi.fn(async () => ({ userId: "admin", role: "admin" })),
+  authorizationErrorResponse: vi.fn(() => null),
+}));
+
 const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 let db;

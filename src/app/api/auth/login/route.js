@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getUserByUsername } from "@/lib/localDb";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
-import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
+import { dashboardClaimsForUser, setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
@@ -28,7 +28,7 @@ export async function POST(request) {
       );
     }
 
-    const { password } = await request.json();
+    const { username = "admin", password } = await request.json();
     const settings = await getSettings();
 
     // Block login via tunnel/tailscale if dashboard access is disabled
@@ -37,16 +37,21 @@ export async function POST(request) {
     }
 
     // Default password is '123456' if not set
-    const storedHash = settings.password;
+    const user = await getUserByUsername(username, { includePassword: true });
+    const storedHash = user?.id === "admin"
+      ? (settings.password || user?.passwordHash)
+      : user?.passwordHash;
 
     if (settings.authMode === "oidc" && isOidcConfigured(settings)) {
       return NextResponse.json({ error: "Password login is disabled. Use OIDC sign in." }, { status: 403 });
     }
 
     let isValid = false;
-    if (storedHash) {
+    if (!user || user.status !== "active") {
+      isValid = false;
+    } else if (storedHash) {
       isValid = await bcrypt.compare(password, storedHash);
-    } else {
+    } else if (user.role === "admin") {
       // Use env var or default
       const initialPassword = process.env.INITIAL_PASSWORD || "123456";
       isValid = password === initialPassword;
@@ -55,7 +60,7 @@ export async function POST(request) {
     if (isValid) {
       recordSuccess(ip);
       const cookieStore = await cookies();
-      await setDashboardAuthCookie(cookieStore, request);
+      await setDashboardAuthCookie(cookieStore, request, dashboardClaimsForUser(user));
 
       // Default password still in use on a remote client → force a password
       // change before the dashboard is exposed remotely (keeps local UX intact).

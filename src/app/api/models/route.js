@@ -2,18 +2,24 @@ import { NextResponse } from "next/server";
 import { getModelAliases, setModelAliasValidated } from "@/models";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { AI_MODELS } from "@/shared/constants/config";
-import { getProviderAlias } from "@/shared/constants/providers";
+import { ALIAS_TO_ID, getProviderAlias } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { validateModelAlias } from "open-sse/services/modelAliases.js";
+import { getAccessibleProviderConnections } from "@/lib/db/index.js";
+import { requireAdmin, requireUser } from "@/lib/auth/authorization";
 
 // GET /api/models - Get models with aliases
-export async function GET() {
+export async function GET(request) {
   try {
+    const principal = await requireUser(request);
+    const connections = await getAccessibleProviderConnections(principal, { isActive: true });
+    const visibleProviders = new Set(connections.map((connection) => connection.provider));
     const modelAliases = await getModelAliases();
     const disabled = await getDisabledModels();
 
     const models = AI_MODELS
       .filter((m) => {
+        if (!visibleProviders.has(ALIAS_TO_ID[m.provider] || m.provider)) return false;
         const alias = getProviderAlias(m.provider) || m.provider;
         const list = disabled[alias] || disabled[m.provider] || [];
         return !list.includes(m.model);
@@ -39,6 +45,7 @@ export async function GET() {
 // PUT /api/models - Update model alias
 export async function PUT(request) {
   try {
+    await requireAdmin(request);
     const body = await request.json();
     const { model, alias, override = false } = body;
 

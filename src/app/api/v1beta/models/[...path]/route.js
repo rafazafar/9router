@@ -6,6 +6,7 @@ import {
   markAccountUnavailable,
 } from "@/sse/services/auth.js";
 import { getSettings } from "@/lib/localDb";
+import { saveRequestUsage } from "@/lib/usageDb.js";
 import { PROVIDER_MODELS } from "@/shared/constants/models";
 import { GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
 import { initTranslators } from "open-sse/translator/index.js";
@@ -180,7 +181,7 @@ function buildGeminiNativeUrl(requestUrl, model, action) {
 async function validateGeminiNativeClientKey(request) {
   const settings = await getSettings();
   const apiKey = extractGeminiClientApiKey(request);
-  const authorization = await authorizeApiKey(apiKey, settings.requireApiKey);
+  const authorization = await authorizeApiKey(apiKey, settings.requireApiKey, request);
   if (!authorization.allowed) {
     return { error: Response.json({ error: { message: authorization.message } }, { status: authorization.status }) };
   }
@@ -328,6 +329,15 @@ async function forwardGeminiNativeRequest(request, body, model, action) {
 
     if (upstreamResponse.ok) {
       await clearAccountError(credentials.connectionId, credentials, modelId);
+      await saveRequestUsage({
+        provider: "gemini",
+        model: modelId,
+        tokens: {},
+        connectionId: credentials.connectionId,
+        apiKey: extractGeminiClientApiKey(request),
+        userId: authorization.policy?.ownerUserId || null,
+        endpoint: new URL(request.url).pathname,
+      });
       return new Response(upstreamResponse.body, {
         status: upstreamResponse.status,
         statusText: upstreamResponse.statusText,
@@ -487,6 +497,11 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
           };
           const reasoningTokens =
             parsed.usage.completion_tokens_details?.reasoning_tokens;
+          const cachedTokens = parsed.usage.cached_tokens
+            ?? parsed.usage.prompt_tokens_details?.cached_tokens;
+          if (cachedTokens) {
+            geminiChunk.usageMetadata.cachedContentTokenCount = cachedTokens;
+          }
           if (reasoningTokens) {
             geminiChunk.usageMetadata.thoughtsTokenCount = reasoningTokens;
           }
@@ -569,6 +584,11 @@ async function convertOpenAIResponseToGemini(response, model) {
       totalTokenCount: body.usage.total_tokens || 0,
     };
     const reasoningTokens = body.usage.completion_tokens_details?.reasoning_tokens;
+    const cachedTokens = body.usage.cached_tokens
+      ?? body.usage.prompt_tokens_details?.cached_tokens;
+    if (cachedTokens) {
+      geminiResponse.usageMetadata.cachedContentTokenCount = cachedTokens;
+    }
     if (reasoningTokens) {
       geminiResponse.usageMetadata.thoughtsTokenCount = reasoningTokens;
     }

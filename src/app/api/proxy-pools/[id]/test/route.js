@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getProxyPoolById, updateProxyPool } from "@/models";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 async function testVercelRelay(relayUrl, timeoutMs = 10000) {
   const controller = new AbortController();
@@ -36,6 +37,7 @@ async function testVercelRelay(relayUrl, timeoutMs = 10000) {
 // POST /api/proxy-pools/[id]/test - Test proxy pool entry
 export async function POST(request, { params }) {
   try {
+    await requireAdmin(request);
     const { id } = await params;
     const proxyPool = await getProxyPoolById(id);
 
@@ -64,6 +66,8 @@ export async function POST(request, { params }) {
       testedAt: now,
     });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error testing proxy pool:", error);
     return NextResponse.json({ error: "Failed to test proxy pool" }, { status: 500 });
   }

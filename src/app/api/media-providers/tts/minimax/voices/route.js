@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 const MINIMAX_VOICE_ENDPOINTS = {
   minimax: "https://api.minimax.io/v1/get_voice",
@@ -64,6 +65,7 @@ function normalizeMiniMaxVoices(data) {
  */
 export async function GET(request) {
   try {
+    await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider") === "minimax-cn" ? "minimax-cn" : "minimax";
     const voiceType = searchParams.get("voice_type") || "all";
@@ -108,6 +110,8 @@ export async function GET(request) {
 
     return NextResponse.json(normalized);
   } catch (err) {
+    const authResponse = authorizationErrorResponse(err);
+    if (authResponse) return authResponse;
     return NextResponse.json({ error: err.message || "Failed to fetch MiniMax voices" }, { status: 502 });
   }
 }

@@ -39,6 +39,7 @@ export default function ProviderDetailPage() {
   const providerId = params.id;
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
@@ -282,21 +283,26 @@ export default function ProviderDetailPage() {
 
   const fetchConnections = useCallback(async () => {
     try {
+      const statusRes = await fetch("/api/auth/status", { cache: "no-store" });
+      const statusData = statusRes.ok ? await statusRes.json() : {};
+      const user = statusData.user || null;
+      const isAdminUser = user?.role === "admin";
+      setCurrentUser(user);
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
         fetch("/api/providers", { cache: "no-store" }),
-        fetch("/api/provider-nodes", { cache: "no-store" }),
-        fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
-        fetch("/api/settings", { cache: "no-store" }),
+        isAdminUser ? fetch("/api/provider-nodes", { cache: "no-store" }) : Promise.resolve(null),
+        isAdminUser ? fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }) : Promise.resolve(null),
+        isAdminUser ? fetch("/api/settings", { cache: "no-store" }) : Promise.resolve(null),
       ]);
       const connectionsData = await connectionsRes.json();
-      const nodesData = await nodesRes.json();
-      const proxyPoolsData = await proxyPoolsRes.json();
-      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const nodesData = nodesRes?.ok ? await nodesRes.json() : {};
+      const proxyPoolsData = proxyPoolsRes?.ok ? await proxyPoolsRes.json() : {};
+      const settingsData = settingsRes?.ok ? await settingsRes.json() : {};
       if (connectionsRes.ok) {
         const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
         setConnections(filtered);
       }
-      if (proxyPoolsRes.ok) {
+      if (proxyPoolsRes?.ok) {
         setProxyPools(proxyPoolsData.proxyPools || []);
       }
       // Load per-provider strategy override
@@ -309,7 +315,7 @@ export default function ProviderDetailPage() {
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
       setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
-      if (nodesRes.ok) {
+      if (nodesRes?.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
 
         // Newly created compatible nodes can be briefly unavailable on one worker.
@@ -442,10 +448,12 @@ export default function ProviderDetailPage() {
   };
 
   useEffect(() => {
-    fetchConnections();
-    fetchAliases();
-    fetchCustomModels();
-    fetchDisabledModels();
+    queueMicrotask(() => {
+      fetchConnections();
+      fetchAliases();
+      fetchCustomModels();
+      fetchDisabledModels();
+    });
   }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels]);
 
   // Fetch suggested models from provider's public API (if configured)
@@ -829,7 +837,9 @@ export default function ProviderDetailPage() {
   };
 
   useEffect(() => {
-    setSelectedConnectionIds((prev) => prev.filter((id) => connections.some((conn) => conn.id === id)));
+    queueMicrotask(() => {
+      setSelectedConnectionIds((prev) => prev.filter((id) => connections.some((conn) => conn.id === id)));
+    });
   }, [connections]);
 
   const selectedProxySummary = (() => {
@@ -1219,6 +1229,80 @@ export default function ProviderDetailPage() {
         <Link href="/dashboard/providers" className="text-primary mt-4 inline-block">
           Back to Providers
         </Link>
+      </div>
+    );
+  }
+
+  if (currentUser?.role === "member") {
+    if (isFreeNoAuth) {
+      return (
+        <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+          <Link href="/dashboard/providers" className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary"><span className="material-symbols-outlined text-lg">arrow_back</span>Back to Providers</Link>
+          <Card><h1 className="text-xl font-semibold">{providerInfo.name}</h1><p className="mt-2 text-sm text-text-muted">This provider has no connection record to own or share, so it is available only to administrators.</p></Card>
+        </div>
+      );
+    }
+    const ownConnections = connections.filter((connection) => connection.ownership === "owned");
+    const sharedConnections = connections.filter((connection) => connection.ownership === "shared");
+    const renderMemberConnections = (items, shared) => (
+      <div className="flex flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
+        {items.map((connection) => (
+          <ConnectionRow
+            key={connection.id}
+            connection={connection}
+            proxyPools={[]}
+            isOAuth={isOAuth}
+            isFirst
+            isLast
+            allowReorder={false}
+            readOnly={shared}
+            ownershipLabel={shared ? `Shared by ${connection.ownerDisplayName || "administrator"}` : "Owned by you"}
+            onToggleActive={(isActive) => handleUpdateConnectionStatus(connection.id, isActive)}
+            onUpdateProxy={async () => {}}
+            onEdit={() => { setSelectedConnection(connection); setShowEditModal(true); }}
+            onDelete={() => handleDelete(connection.id)}
+          />
+        ))}
+      </div>
+    );
+
+    return (
+      <div className="flex min-w-0 flex-col gap-6 px-1 sm:gap-8 sm:px-0">
+        <div>
+          <Link href="/dashboard/providers" className="mb-4 inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary">
+            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            Back to Providers
+          </Link>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{providerInfo.name}</h1>
+          <p className="text-sm text-text-muted">Your credentials and connections shared with you.</p>
+        </div>
+
+        <Card>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div><h2 className="text-lg font-semibold">My connections</h2><p className="text-xs text-text-muted">You can edit, reauthenticate, disable, or delete these connections.</p></div>
+            <div className="flex gap-2">
+              {hasDualAuthModes && <Button size="sm" icon="lock" variant="secondary" onClick={triggerOAuthConnection}>{oauthConnectionLabel}</Button>}
+              <Button size="sm" icon="add" onClick={hasDualAuthModes ? triggerApiKeyConnection : triggerAddConnection}>Add connection</Button>
+            </div>
+          </div>
+          {ownConnections.length ? renderMemberConnections(ownConnections, false) : <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-text-muted">No connections owned by you yet.</p>}
+        </Card>
+
+        <Card>
+          <div className="mb-4"><h2 className="text-lg font-semibold">Shared with me</h2><p className="text-xs text-text-muted">Shared credentials are hidden and managed by their owner.</p></div>
+          {sharedConnections.length ? renderMemberConnections(sharedConnections, true) : <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-text-muted">No shared connections for this provider.</p>}
+        </Card>
+
+        {models.length > 0 && <Card><h2 className="mb-4 text-lg font-semibold">Available models</h2><div className="flex flex-wrap gap-2">{models.filter((model) => !getModelKind(model) || getModelKind(model) === "llm").map((model) => <code key={model.id} className="rounded-lg border border-border px-3 py-2 text-xs">{providerDisplayAlias}/{model.id}</code>)}</div></Card>}
+
+        {providerId === "kiro" ? <KiroOAuthWrapper isOpen={showOAuthModal} providerInfo={providerInfo} onSuccess={handleOAuthSuccess} onClose={() => setShowOAuthModal(false)} />
+          : providerId === "cursor" ? <CursorAuthModal isOpen={showOAuthModal} onSuccess={handleOAuthSuccess} onClose={() => setShowOAuthModal(false)} />
+          : providerId === "gitlab" ? <GitLabAuthModal isOpen={showOAuthModal} providerInfo={providerInfo} onSuccess={handleOAuthSuccess} onClose={() => setShowOAuthModal(false)} />
+          : <OAuthModal isOpen={showOAuthModal} provider={providerId} providerInfo={providerInfo} onSuccess={handleOAuthSuccess} onClose={() => setShowOAuthModal(false)} />}
+        {providerId === "iflow" && <IFlowCookieModal isOpen={showIFlowCookieModal} onSuccess={handleIFlowCookieSuccess} onClose={() => setShowIFlowCookieModal(false)} />}
+        <AddApiKeyModal isOpen={showAddApiKeyModal} provider={providerId} providerName={providerInfo.name} isCompatible={false} isAnthropic={false} authType={providerInfo?.authType} authHint={providerInfo?.authHint} website={providerInfo?.website} proxyPools={[]} error={addConnectionError} onSave={handleSaveApiKey} onBulkDone={fetchConnections} onClose={() => { setAddConnectionError(""); setShowAddApiKeyModal(false); }} />
+        <EditConnectionModal isOpen={showEditModal} connection={selectedConnection} proxyPools={[]} onSave={handleUpdateConnection} onClose={() => setShowEditModal(false)} />
+        <ConfirmModal isOpen={!!confirmState} onClose={() => setConfirmState(null)} onConfirm={confirmState?.onConfirm} title={confirmState?.title || "Confirm"} message={confirmState?.message} variant="danger" />
       </div>
     );
   }

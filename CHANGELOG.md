@@ -1,6 +1,7 @@
 # v0.5.30 (2026-07-10)
 
 ## Features
+- **Multi-user**: add admin/member accounts, invite-based OIDC, connection ownership and exact grants, user-owned API keys, tenant-scoped routing, usage isolation, and member management dashboard
 - **Perplexity**: add Agent API provider (#2492)
 - **Grok CLI**: add Grok CLI / Grok Build provider with OAuth device-code flow (#2502)
 - **Featherless**: add OpenAI-compatible provider presets
@@ -12,6 +13,7 @@
 - **Proxy-Pools**: auto-rotate strategy for no-auth providers (#2409)
 
 ## Fixes
+- **Security**: enforce connection-level authorization across provider/OAuth CRUD, model discovery, all inference formats, usage/log APIs, and alternate API-key header/query forms
 - **Cloudflare-AI**: support accountId in bulk key import (#2449)
 - **DB**: backup on schema change, MCP child cleanup, codex models, usage providers OOM
 - **Codex**: avoid bare-email OAuth dedup (#2477)

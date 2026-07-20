@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import {
-  getProviderConnections,
+  canManageProviderConnection,
+  getAccessibleProviderConnections,
   updateProviderConnection,
 } from "@/lib/localDb";
+import { requireUser } from "@/lib/auth/authorization";
 
 const MODEL_LOCK_PREFIX = "modelLock_";
 
@@ -19,9 +21,10 @@ function getActiveModelLocks(connection) {
     .filter((lock) => lock.active);
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const connections = await getProviderConnections();
+    const principal = await requireUser(request);
+    const connections = await getAccessibleProviderConnections(principal);
     const models = [];
 
     for (const connection of connections) {
@@ -65,13 +68,15 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    const principal = await requireUser(request);
     const { action, provider, model } = await request.json();
 
     if (action !== "clearCooldown" || !provider || !model) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
-    const connections = await getProviderConnections({ provider });
+    const connections = (await getAccessibleProviderConnections(principal, { provider }))
+      .filter((connection) => canManageProviderConnection(principal, connection));
     const lockKey = `${MODEL_LOCK_PREFIX}${model}`;
 
     await Promise.all(

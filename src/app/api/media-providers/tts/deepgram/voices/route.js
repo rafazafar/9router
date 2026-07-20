@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 const langNames = new Intl.DisplayNames(["en"], { type: "language" });
 
@@ -10,6 +11,7 @@ const langNames = new Intl.DisplayNames(["en"], { type: "language" });
  */
 export async function GET(request) {
   try {
+    await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const langFilter = searchParams.get("lang");
 
@@ -60,6 +62,8 @@ export async function GET(request) {
     }
     return NextResponse.json({ languages, byLang });
   } catch (err) {
+    const authResponse = authorizationErrorResponse(err);
+    if (authResponse) return authResponse;
     return NextResponse.json({ error: err.message || "Failed to fetch voices" }, { status: 502 });
   }
 }

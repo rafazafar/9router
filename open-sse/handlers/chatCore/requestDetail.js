@@ -24,6 +24,16 @@ export function extractRequestConfig(body, stream) {
 export function extractUsageFromResponse(responseBody) {
   if (!responseBody || typeof responseBody !== "object") return null;
 
+  // OpenAI Responses format
+  if (responseBody.object === "response" && responseBody.usage?.input_tokens !== undefined) {
+    return {
+      prompt_tokens: responseBody.usage.input_tokens || 0,
+      completion_tokens: responseBody.usage.output_tokens || 0,
+      cached_tokens: responseBody.usage.cached_tokens ?? responseBody.usage.input_tokens_details?.cached_tokens,
+      reasoning_tokens: responseBody.usage.reasoning_tokens ?? responseBody.usage.output_tokens_details?.reasoning_tokens
+    };
+  }
+
   // Claude format
   if (responseBody.usage?.input_tokens !== undefined) {
     return {
@@ -39,8 +49,8 @@ export function extractUsageFromResponse(responseBody) {
     return {
       prompt_tokens: responseBody.usage.prompt_tokens || 0,
       completion_tokens: responseBody.usage.completion_tokens || 0,
-      cached_tokens: responseBody.usage.prompt_tokens_details?.cached_tokens,
-      reasoning_tokens: responseBody.usage.completion_tokens_details?.reasoning_tokens
+      cached_tokens: responseBody.usage.cached_tokens ?? responseBody.usage.prompt_tokens_details?.cached_tokens,
+      reasoning_tokens: responseBody.usage.reasoning_tokens ?? responseBody.usage.completion_tokens_details?.reasoning_tokens
     };
   }
 
@@ -62,6 +72,7 @@ export function buildRequestDetail(base, overrides = {}) {
     provider: base.provider || "unknown",
     model: base.model || "unknown",
     connectionId: base.connectionId || undefined,
+    userId: base.userId || undefined,
     timestamp: new Date().toISOString(),
     latency: base.latency || { ttft: 0, total: 0 },
     tokens: base.tokens || { prompt_tokens: 0, completion_tokens: 0 },
@@ -93,7 +104,7 @@ export function formatDoneLine({ usage, latency }) {
   return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
 }
 
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, userId, endpoint, label = "USAGE", silent = false }) {
   if (!tokens || typeof tokens !== "object") return;
 
   const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
@@ -121,6 +132,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
+    userId: userId || undefined,
     endpoint: endpoint || null
   }).catch(() => {});
 }

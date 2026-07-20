@@ -113,14 +113,25 @@ function importLegacyMain(adapter, data) {
   if (!data || typeof data !== "object") return;
 
   if (data.settings) {
-    adapter.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(data.settings)]);
+    const settings = { ...data.settings, requireLogin: true };
+    const oidcSubject = settings.oidcSubject || settings.oidcSub || null;
+    const identityIssuer = settings.oidcIdentityIssuer || null;
+    const oidcIssuer = identityIssuer || settings.oidcIssuerUrl || null;
+    const oidcEmail = settings.oidcEmail || settings.oidcAdminEmail || null;
+    if (settings.authMode === "oidc" && (!oidcSubject || !identityIssuer)) settings.authMode = "both";
+    adapter.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(settings)]);
+    adapter.run(
+      `UPDATE users SET passwordHash = COALESCE(?, passwordHash), email = COALESCE(?, email),
+       oidcIssuer = COALESCE(?, oidcIssuer), oidcSubject = COALESCE(?, oidcSubject), updatedAt = ? WHERE id = 'admin'`,
+      [settings.password || null, oidcEmail, oidcIssuer ? String(oidcIssuer).replace(/\/$/, "") : null, oidcSubject, new Date().toISOString()]
+    );
   }
 
   importWithAssertion(adapter, "providerConnections", data.providerConnections || [], (c) => {
     const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
     adapter.run(
-      `INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, provider, authType || "oauth", name || null, email || null, priority || null, isActive === false ? 0 : 1, stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
+      `INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt, ownerUserId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, provider, authType || "oauth", name || null, email || null, priority || null, isActive === false ? 0 : 1, stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString(), "admin"]
     );
   }, (c) => ({ id: c.id ?? null, provider: c.provider ?? null, name: c.name ?? null }));
 
@@ -142,8 +153,8 @@ function importLegacyMain(adapter, data) {
 
   importWithAssertion(adapter, "apiKeys", data.apiKeys || [], (k) => {
     adapter.run(
-      `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt, dailyRequestLimit, dailyTokenLimit, requestCount, tokenCount, quotaDate, allowedConnectionIds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString(), k.dailyRequestLimit || null, k.dailyTokenLimit || null, k.requestCount || 0, k.tokenCount || 0, k.quotaDate || null, stringifyJson(k.allowedConnectionIds || [])]
+      `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt, dailyRequestLimit, dailyTokenLimit, requestCount, tokenCount, quotaDate, allowedConnectionIds, ownerUserId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString(), k.dailyRequestLimit || null, k.dailyTokenLimit || null, k.requestCount || 0, k.tokenCount || 0, k.quotaDate || null, stringifyJson(k.allowedConnectionIds || []), "admin"]
     );
   }, (k) => ({ id: k.id ?? null, name: k.name ?? null }));
 
@@ -174,7 +185,7 @@ function importLegacyUsage(adapter, data) {
   for (const e of data.history || []) {
     const t = e.tokens || {};
     adapter.run(
-      `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, userId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         e.timestamp || new Date().toISOString(),
         e.provider || null, e.model || null, e.connectionId || null, e.apiKey || null, e.endpoint || null,
@@ -184,6 +195,7 @@ function importLegacyUsage(adapter, data) {
         e.status || "ok",
         stringifyJson(t),
         stringifyJson({}),
+        "admin",
       ]
     );
   }
@@ -206,8 +218,8 @@ function importLegacyDetails(adapter, data) {
   if (!data || !Array.isArray(data.records)) return;
   for (const r of data.records) {
     adapter.run(
-      `INSERT OR REPLACE INTO requestDetails(id, timestamp, provider, model, connectionId, status, data) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-      [r.id, r.timestamp || new Date().toISOString(), r.provider || null, r.model || null, r.connectionId || null, r.status || null, stringifyJson(r)]
+      `INSERT OR REPLACE INTO requestDetails(id, timestamp, provider, model, connectionId, status, userId, data) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+      [r.id, r.timestamp || new Date().toISOString(), r.provider || null, r.model || null, r.connectionId || null, r.status || null, "admin", stringifyJson({ ...r, userId: r.userId || "admin" })]
     );
   }
 }

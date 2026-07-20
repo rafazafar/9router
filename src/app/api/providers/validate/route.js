@@ -5,6 +5,7 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { requireUser } from "@/lib/auth/authorization";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -83,9 +84,22 @@ async function probeMediaProvider(provider, apiKey) {
 // POST /api/providers/validate - Validate API key with provider
 export async function POST(request) {
   try {
+    const principal = await requireUser(request);
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
     const { apiKey, providerSpecificData } = body;
+    if (principal.role !== "admin") {
+      const forbiddenUrlFields = ["baseUrl", "baseURL", "endpoint", "azureEndpoint", "host", "url"];
+      if (
+        provider === "ollama-local" ||
+        isOpenAICompatibleProvider(provider) ||
+        isAnthropicCompatibleProvider(provider) ||
+        isCustomEmbeddingProvider(provider) ||
+        forbiddenUrlFields.some((field) => typeof providerSpecificData?.[field] === "string" && providerSpecificData[field].trim())
+      ) {
+        return NextResponse.json({ error: "Custom endpoints require administrator access" }, { status: 403 });
+      }
+    }
 
     const isNoAuth = AI_PROVIDERS[provider]?.noAuth === true;
     if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {

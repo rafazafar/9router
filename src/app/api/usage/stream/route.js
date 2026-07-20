@@ -1,8 +1,18 @@
 import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
+import { getUserUsageStats } from "@/lib/db/index.js";
+import { authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request) {
+  let principal;
+  try {
+    principal = await requireUser(request);
+  } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
+    throw error;
+  }
   const encoder = new TextEncoder();
   const state = { closed: false, keepalive: null, send: null, sendPending: null, cachedStats: null };
 
@@ -13,13 +23,13 @@ export async function GET() {
         if (state.closed) return;
         try {
           // Push lightweight update immediately so UI reflects changes fast
-          if (state.cachedStats) {
+          if (state.cachedStats && principal.role === "admin") {
             const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
             const quickStats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(quickStats)}\n\n`));
           }
           // Then do full recalc and update cache
-          const stats = await getUsageStats();
+          const stats = principal.role === "admin" ? await getUsageStats() : await getUserUsageStats(principal.userId);
           state.cachedStats = stats;
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {
@@ -32,6 +42,7 @@ export async function GET() {
 
       // Lightweight push: only refresh activeRequests + recentRequests on pending changes
       state.sendPending = async () => {
+        if (principal.role !== "admin") return state.send();
         if (state.closed || !state.cachedStats) return;
         try {
           const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();

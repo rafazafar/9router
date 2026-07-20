@@ -1,10 +1,16 @@
 import { getConsoleLogs, getConsoleEmitter, initConsoleLogCapture } from "@/lib/consoleLogBuffer";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 export const dynamic = "force-dynamic";
 
 initConsoleLogCapture();
 
 export async function GET(request) {
+  try {
+    await requireAdmin(request);
+  } catch (error) {
+    return authorizationErrorResponse(error) || Response.json({ error: error.message }, { status: 500 });
+  }
   const encoder = new TextEncoder();
   const emitter = getConsoleEmitter();
   const state = { closed: false, send: null, sendLines: null, sendClear: null, keepalive: null };

@@ -37,6 +37,26 @@ describe("canonicalizeUsage", () => {
     expect(out.cache_creation_input_tokens).toBe(0);
   });
 
+  it("reads cached tokens from translated Chat Completions usage details", () => {
+    const out = canonicalizeUsage({
+      prompt_tokens: 330,
+      completion_tokens: 50,
+      prompt_tokens_details: { cached_tokens: 200 },
+    });
+    expect(out.prompt_tokens).toBe(330);
+    expect(out.cached_tokens).toBe(200);
+  });
+
+  it("reads cached tokens from raw Responses API usage details", () => {
+    const out = canonicalizeUsage({
+      input_tokens: 330,
+      output_tokens: 50,
+      input_tokens_details: { cached_tokens: 200 },
+    });
+    expect(out.prompt_tokens).toBe(330);
+    expect(out.cached_tokens).toBe(200);
+  });
+
   it("passes through Gemini inclusive prompt (cachedContent already counted)", () => {
     const out = canonicalizeUsage({
       prompt_tokens: 500,

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { getChartData } from "@/lib/usageDb";
+import { authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
 
 const VALID_PERIODS = new Set(["today", "24h", "7d", "30d", "60d"]);
 
 export async function GET(request) {
   try {
+    const principal = await requireUser(request);
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "7d";
 
@@ -12,9 +14,11 @@ export async function GET(request) {
       return NextResponse.json({ error: "Invalid period" }, { status: 400 });
     }
 
-    const data = await getChartData(period);
+    const data = await getChartData(period, principal.role === "admin" ? {} : { userId: principal.userId });
     return NextResponse.json(data);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error("[API] Failed to get chart data:", error);
     return NextResponse.json({ error: "Failed to fetch chart data" }, { status: 500 });
   }

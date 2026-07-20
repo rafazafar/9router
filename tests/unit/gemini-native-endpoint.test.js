@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   getProviderCredentials: vi.fn(),
   markAccountUnavailable: vi.fn(),
   clearAccountError: vi.fn(),
+  authorizeApiKey: vi.fn(),
+  saveRequestUsage: vi.fn(),
 }));
 
 vi.mock("@/sse/handlers/chat.js", () => ({
@@ -18,10 +20,29 @@ vi.mock("@/sse/services/auth.js", () => ({
   isValidApiKey: mocks.isValidApiKey,
   markAccountUnavailable: mocks.markAccountUnavailable,
   clearAccountError: mocks.clearAccountError,
+  authorizeApiKey: mocks.authorizeApiKey,
+  extractApiKey: vi.fn((request) => request.headers.get("x-goog-api-key") || request.headers.get("Authorization")?.replace(/^Bearer\s+/, "") || new URL(request.url).searchParams.get("key")),
+}));
+
+vi.mock("@/lib/usageDb.js", () => ({
+  saveRequestUsage: mocks.saveRequestUsage,
 }));
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
+  getProviderConnections: vi.fn(async () => [{ id: "gemini-conn", provider: "gemini", isActive: true }]),
+  getCombos: vi.fn(async () => []),
+  getCustomModels: vi.fn(async () => []),
+  getModelAliases: vi.fn(async () => ({})),
+}));
+
+vi.mock("@/lib/auth/authorization.js", () => ({
+  resolveRequestConnectionIds: vi.fn(async () => ["gemini-conn"]),
+  authorizationErrorResponse: vi.fn(() => null),
+}));
+
+vi.mock("@/lib/disabledModelsDb", () => ({
+  getDisabledModels: vi.fn(async () => ({})),
 }));
 
 const { GET } = await import("../../src/app/api/v1beta/models/route.js");
@@ -61,6 +82,7 @@ describe("Gemini native v1beta endpoint", () => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireApiKey: true });
     mocks.isValidApiKey.mockResolvedValue(true);
+    mocks.authorizeApiKey.mockResolvedValue({ allowed: true, apiKey: { ownerUserId: "admin" } });
     mocks.getProviderCredentials.mockResolvedValue({
       apiKey: "real-gemini-key",
       connectionId: "gemini-conn",
@@ -80,7 +102,7 @@ describe("Gemini native v1beta endpoint", () => {
   });
 
   it("lists Gemini TTS models using standard Google model names", async () => {
-    const response = await GET();
+    const response = await GET(new Request("https://router.test/v1beta/models"));
     const body = await response.json();
     const names = body.models.map((model) => model.name);
 
@@ -122,7 +144,7 @@ describe("Gemini native v1beta endpoint", () => {
       params: Promise.resolve({ path: ["gemini-2.5-flash-preview-tts:generateContent"] }),
     });
 
-    expect(mocks.isValidApiKey).toHaveBeenCalledWith("client-router-key");
+    expect(mocks.authorizeApiKey).toHaveBeenCalledWith("client-router-key", true, request);
     expect(global.fetch.mock.calls[0][1].headers["x-goog-api-key"]).toBe("real-gemini-key");
     expect(global.fetch.mock.calls[0][1].headers["x-goog-api-key"]).not.toBe("client-router-key");
   });

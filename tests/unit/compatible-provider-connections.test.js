@@ -19,6 +19,10 @@ async function setupTestContext(nodeData) {
       },
     },
   }));
+  vi.doMock("@/lib/auth/authorization", () => ({
+    requireUser: vi.fn(async () => ({ userId: "admin", role: "admin", user: { id: "admin", role: "admin" } })),
+    authorizationErrorResponse: vi.fn(() => null),
+  }));
 
   const { POST } = await import("@/app/api/providers/route.js");
   const {
@@ -75,6 +79,7 @@ describe("compatible provider connections API", () => {
 
   afterEach(() => {
     vi.doUnmock("next/server");
+    vi.doUnmock("@/lib/auth/authorization");
     vi.resetModules();
     vi.clearAllMocks();
     cleanup();

@@ -37,12 +37,15 @@ function rowToKey(row) {
     tokenCount: row.tokenCount || 0,
     quotaDate: row.quotaDate || utcDateKey(),
     allowedConnectionIds: Array.isArray(parsedConnectionIds) ? parsedConnectionIds : ["__invalid_policy__"],
+    ownerUserId: row.ownerUserId || null,
   };
 }
 
-export async function getApiKeys() {
+export async function getApiKeys(ownerUserId = null) {
   const db = await getAdapter();
-  const rows = db.all(`SELECT * FROM apiKeys ORDER BY createdAt ASC`);
+  const rows = ownerUserId
+    ? db.all(`SELECT * FROM apiKeys WHERE ownerUserId = ? ORDER BY createdAt ASC`, [ownerUserId])
+    : db.all(`SELECT * FROM apiKeys ORDER BY createdAt ASC`);
   return rows.map(rowToKey);
 }
 
@@ -70,10 +73,11 @@ export async function createApiKey(name, machineId, options = {}) {
     tokenCount: 0,
     quotaDate: utcDateKey(),
     allowedConnectionIds: normalizeConnectionIds(options.allowedConnectionIds || []),
+    ownerUserId: options.ownerUserId || null,
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, dailyRequestLimit, dailyTokenLimit, requestCount, tokenCount, quotaDate, allowedConnectionIds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, apiKey.dailyRequestLimit, apiKey.dailyTokenLimit, 0, 0, apiKey.quotaDate, stringifyJson(apiKey.allowedConnectionIds)]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, dailyRequestLimit, dailyTokenLimit, requestCount, tokenCount, quotaDate, allowedConnectionIds, ownerUserId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, apiKey.dailyRequestLimit, apiKey.dailyTokenLimit, 0, 0, apiKey.quotaDate, stringifyJson(apiKey.allowedConnectionIds), apiKey.ownerUserId]
   );
   return apiKey;
 }
@@ -121,6 +125,10 @@ export async function reserveApiKeyRequest(key) {
   db.transaction(() => {
     let row = db.get(`SELECT * FROM apiKeys WHERE key = ?`, [key]);
     if (!row || !(row.isActive === 1 || row.isActive === true)) return;
+    if (row.ownerUserId) {
+      const owner = db.get(`SELECT status FROM users WHERE id = ?`, [row.ownerUserId]);
+      if (!owner || owner.status !== "active") return;
+    }
 
     const today = utcDateKey();
     if (row.quotaDate !== today) {

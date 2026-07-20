@@ -1,4 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/auth/authorization", () => ({
+  requireUser: vi.fn(async () => ({ userId: "admin", role: "admin" })),
+  requireAdmin: vi.fn(async () => ({ userId: "admin", role: "admin" })),
+}));
+
+vi.mock("@/lib/db/index.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getAccessibleProviderConnections: vi.fn(async () => [{ id: "kiro-test", provider: "kiro", isActive: true }]),
+  };
+});
 
 // Regression: /api/models used to trim caps to {vision,search,reasoning}, dropping
 // thinkingFormat, thinkingRange, contextWindow, maxOutput, pdf, audioInput, etc.
@@ -16,7 +29,7 @@ describe("/api/models GET — full caps exposure", () => {
       return { ok: true, status: init?.status || 200, json: async () => body };
     };
     try {
-      await mod.GET();
+      await mod.GET(new Request("http://localhost/api/models"));
     } finally {
       nextServer.NextResponse.json = realJson;
     }

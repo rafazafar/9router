@@ -393,10 +393,16 @@ const PROVIDER_MODELS_CONFIG = {
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const connection = await getProviderConnectionById(id);
+    const { requireUser } = await import("@/lib/auth/authorization");
+    const { canManageProviderConnection, getAccessibleProviderConnectionById } = await import("@/lib/db/index.js");
+    const principal = await requireUser(request);
+    const connection = await getAccessibleProviderConnectionById(principal, id);
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+    if (!canManageProviderConnection(principal, connection)) {
+      return NextResponse.json({ error: "Shared connection model discovery requires owner access" }, { status: 403 });
     }
 
     if (isOpenAICompatibleProvider(connection.provider)) {

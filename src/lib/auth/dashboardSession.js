@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { DATA_DIR } from "@/lib/dataDir";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getUserById } from "@/lib/localDb";
 
 const DEFAULT_PASSWORD = "123456";
 
@@ -38,13 +38,10 @@ export async function createDashboardAuthToken(claims = {}) {
 }
 
 export async function verifyDashboardAuthToken(token) {
-  if (!token) return false;
-  try {
-    await jwtVerify(token, SECRET);
-    return true;
-  } catch {
-    return false;
-  }
+  const session = await getDashboardAuthSession(token);
+  if (!session?.sub) return false;
+  const user = await getUserById(session.sub);
+  return !!user && user.status === "active" && user.sessionVersion === session.sessionVersion;
 }
 
 export async function getDashboardAuthSession(token) {
@@ -65,6 +62,15 @@ export async function setDashboardAuthCookie(cookieStore, request, claims = {}) 
     sameSite: "lax",
     path: "/",
   });
+}
+
+export function dashboardClaimsForUser(user, extra = {}) {
+  return {
+    sub: user.id,
+    role: user.role,
+    sessionVersion: user.sessionVersion,
+    ...extra,
+  };
 }
 
 export function clearDashboardAuthCookie(cookieStore) {

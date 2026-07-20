@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
+import { requireUser } from "@/lib/auth/authorization";
 
 /**
  * POST /api/oauth/codex/import-token
@@ -11,6 +12,7 @@ import { extractCodexAccountInfo } from "@/lib/oauth/providers";
  */
 export async function POST(request) {
   try {
+    const principal = await requireUser(request);
     const { accessToken, name } = await request.json();
 
     if (!accessToken || typeof accessToken !== "string") {
@@ -76,6 +78,7 @@ export async function POST(request) {
       email: email,
       providerSpecificData,
       testStatus: "active",
+      ownerUserId: principal.userId,
     });
 
     return NextResponse.json({

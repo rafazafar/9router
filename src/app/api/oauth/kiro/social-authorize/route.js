@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { generatePKCE } from "@/lib/oauth/utils/pkce";
 import { KiroService } from "@/lib/oauth/services/kiro";
+import { requireUser } from "@/lib/auth/authorization";
+import { bindOAuthOwner } from "@/lib/oauth/ownerState";
 
 /**
  * GET /api/oauth/kiro/social-authorize
@@ -9,6 +11,7 @@ import { KiroService } from "@/lib/oauth/services/kiro";
  */
 export async function GET(request) {
   try {
+    const principal = await requireUser(request);
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider"); // "google" or "github"
 
@@ -21,6 +24,7 @@ export async function GET(request) {
 
     // Generate PKCE for social auth
     const { codeVerifier, codeChallenge, state } = generatePKCE();
+    await bindOAuthOwner(state, principal.userId);
 
     const kiroService = new KiroService();
     const authUrl = kiroService.buildSocialLoginUrl(

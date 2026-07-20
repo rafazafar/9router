@@ -98,6 +98,12 @@ const getPageInfo = (pathname) => {
       icon: "bar_chart",
       breadcrumbs: [],
     };
+  if (pathname.includes("/members"))
+    return { title: "Members", description: "Manage users and exact connection access", icon: "group", breadcrumbs: [] };
+  if (pathname.includes("/keys"))
+    return { title: "API Keys", description: "Create keys scoped to your accessible connections", icon: "key", breadcrumbs: [] };
+  if (pathname.includes("/account"))
+    return { title: "Account", description: "Manage your identity, password, and sessions", icon: "person", breadcrumbs: [] };
   if (pathname.includes("/auth-files"))
     return {
       title: "Auth Files",

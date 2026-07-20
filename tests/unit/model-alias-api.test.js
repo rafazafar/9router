@@ -21,21 +21,31 @@ describe("model alias API", () => {
   });
 
   it("creates, lists, updates, resolves, and deletes a full-model alias", async () => {
+    const db = await import("@/lib/db/index.js");
+    await db.initDb();
+    const admin = await db.getUserById("admin");
+    const { createDashboardAuthToken, dashboardClaimsForUser } = await import("@/lib/auth/dashboardSession.js");
+    const token = await createDashboardAuthToken(dashboardClaimsForUser(admin));
+    const adminRequest = (url, init = {}) => {
+      const headers = new Headers(init.headers);
+      headers.set("cookie", `auth_token=${token}`);
+      return new Request(url, { ...init, headers });
+    };
     const route = await import("@/app/api/models/alias/route.js");
 
-    const conflict = await route.PUT(new Request("http://localhost/api/models/alias", {
+    const conflict = await route.PUT(adminRequest("http://localhost/api/models/alias", {
       method: "PUT",
       body: JSON.stringify({ alias: "openai/gpt-5.6-sol", model: "cx/gpt-5.6-sol" }),
     }));
     expect(conflict.status).toBe(409);
 
-    const created = await route.PUT(new Request("http://localhost/api/models/alias", {
+    const created = await route.PUT(adminRequest("http://localhost/api/models/alias", {
       method: "PUT",
       body: JSON.stringify({ alias: "openai/gpt-5.6-sol", model: "cx/gpt-5.6-sol", override: true }),
     }));
     expect(created.status).toBe(200);
 
-    const listed = await route.GET();
+    const listed = await route.GET(adminRequest("http://localhost/api/models/alias"));
     await expect(listed.json()).resolves.toMatchObject({
       aliases: { "openai/gpt-5.6-sol": "cx/gpt-5.6-sol" },
     });
@@ -62,13 +72,13 @@ describe("model alias API", () => {
       "x-9router-target": "cx/gpt-5.6-sol",
     });
 
-    const updated = await route.PUT(new Request("http://localhost/api/models/alias", {
+    const updated = await route.PUT(adminRequest("http://localhost/api/models/alias", {
       method: "PUT",
       body: JSON.stringify({ alias: "openai/gpt-5.6-sol", model: "cx/gpt-5.6-terra", override: true }),
     }));
     expect(updated.status).toBe(200);
 
-    const deleted = await route.DELETE(new Request(
+    const deleted = await route.DELETE(adminRequest(
       "http://localhost/api/models/alias?alias=openai%2Fgpt-5.6-sol",
       { method: "DELETE" },
     ));

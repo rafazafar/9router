@@ -4,11 +4,19 @@ const mocks = vi.hoisted(() => ({
   getProviderConnectionById: vi.fn(),
   getApiKeys: vi.fn(),
   getConsistentMachineId: vi.fn(),
+  requireUser: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,
+  getAccessibleProviderConnectionById: mocks.getProviderConnectionById,
+  canManageProviderConnection: vi.fn(() => true),
   getApiKeys: mocks.getApiKeys,
+}));
+
+vi.mock("@/lib/auth/authorization", () => ({
+  requireUser: mocks.requireUser,
+  requireConnectionAccess: vi.fn(async (_principal, id) => mocks.getProviderConnectionById(id)),
 }));
 
 vi.mock("@/shared/utils/machineId", () => ({
@@ -37,6 +45,7 @@ describe("provider test-models route kind routing", () => {
     });
     mocks.getApiKeys.mockResolvedValue([{ key: "sk-internal", isActive: true }]);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.requireUser.mockResolvedValue({ userId: "admin", role: "admin" });
     global.fetch = vi.fn((url) => {
       if (String(url).includes("/api/v1/images/generations")) {
         return Promise.resolve(new Response(JSON.stringify({

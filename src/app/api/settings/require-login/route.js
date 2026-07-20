@@ -4,7 +4,7 @@ import { getSettings } from "@/lib/localDb";
 export async function GET() {
   try {
     const settings = await getSettings();
-    const requireLogin = settings.requireLogin !== false;
+    const requireLogin = true;
     const tunnelDashboardAccess = settings.tunnelDashboardAccess !== false;
     const tunnelUrl = settings.tunnelUrl || "";
     const tailscaleUrl = settings.tailscaleUrl || "";

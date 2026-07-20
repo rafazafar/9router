@@ -17,6 +17,13 @@ import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { extractApiKey } from "@/sse/services/auth";
+import { authorizationErrorResponse, resolveRequestConnectionIds } from "@/lib/auth/authorization";
+
+async function resolveAllowedConnectionIds(request) {
+  const apiKeyValue = extractApiKey(request);
+  return resolveRequestConnectionIds(request, apiKeyValue);
+}
 
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
@@ -265,11 +272,15 @@ function comboMatchesKinds(combo, kindFilter) {
  * Build OpenAI-format models list filtered by service kinds.
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
  */
-export async function buildModelsList(kindFilter) {
+export async function buildModelsList(kindFilter, allowedConnectionIds = undefined) {
   let connections = [];
   try {
     connections = await getProviderConnections();
     connections = connections.filter(c => c.isActive !== false);
+    if (allowedConnectionIds !== undefined) {
+      const allowed = new Set(allowedConnectionIds);
+      connections = connections.filter((connection) => allowed.has(connection.id));
+    }
   } catch (e) {
     console.log("Could not fetch providers, returning all models");
   }
@@ -277,6 +288,7 @@ export async function buildModelsList(kindFilter) {
   let combos = [];
   try {
     combos = await getCombos();
+    if (allowedConnectionIds !== undefined) combos = [];
   } catch (e) {
     console.log("Could not fetch combos");
   }
@@ -310,11 +322,11 @@ export async function buildModelsList(kindFilter) {
   }
   const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && disabledByAlias[alias].includes(modelId);
 
-  const activeConnectionByProvider = new Map();
+  const activeConnectionsByProvider = new Map();
   for (const conn of connections) {
-    if (!activeConnectionByProvider.has(conn.provider)) {
-      activeConnectionByProvider.set(conn.provider, conn);
-    }
+    const providerConnections = activeConnectionsByProvider.get(conn.provider) || [];
+    providerConnections.push(conn);
+    activeConnectionsByProvider.set(conn.provider, providerConnections);
   }
 
   const models = [];
@@ -333,7 +345,7 @@ export async function buildModelsList(kindFilter) {
     models.push(enrichComboEntry(entry, combo.models, modelAliases));
   }
 
-  if (connections.length === 0) {
+  if (connections.length === 0 && allowedConnectionIds === undefined) {
     // DB unavailable -> return static models, filtered by per-model kind
     const aliasToProviderId = Object.fromEntries(
       Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id])
@@ -370,8 +382,9 @@ export async function buildModelsList(kindFilter) {
       }, providerId, modelId, capabilitiesFromServiceKind(customModel.kind || customModel.type)));
     }
   } else {
-    for (const [providerId, conn] of activeConnectionByProvider.entries()) {
+    for (const [providerId, providerConnections] of activeConnectionsByProvider.entries()) {
       if (!providerMatchesKinds(providerId, kindFilter)) continue;
+      const conn = providerConnections[0];
 
       const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
       const outputAlias = (
@@ -380,9 +393,13 @@ export async function buildModelsList(kindFilter) {
         || staticAlias
       ).trim();
       const providerModels = PROVIDER_MODELS[staticAlias] || [];
-      const enabledModels = conn?.providerSpecificData?.enabledModels;
-      const hasExplicitEnabledModels =
-        Array.isArray(enabledModels) && enabledModels.length > 0;
+      const enabledModelLists = providerConnections.map((connection) => (
+        Array.isArray(connection.providerSpecificData?.enabledModels)
+          ? connection.providerSpecificData.enabledModels.filter((modelId) => typeof modelId === "string" && modelId.trim())
+          : []
+      ));
+      const allHaveExplicitEnabledModels = enabledModelLists.every((models) => models.length > 0);
+      const enabledModels = enabledModelLists.flat();
       const isCompatibleProvider =
         isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
 
@@ -393,7 +410,7 @@ export async function buildModelsList(kindFilter) {
       let liveModelKindById = new Map();
       let liveCapabilitiesById = new Map();
 
-      let rawModelIds = hasExplicitEnabledModels
+      let rawModelIds = allHaveExplicitEnabledModels
         ? Array.from(
             new Set(
               enabledModels.filter(
@@ -404,31 +421,30 @@ export async function buildModelsList(kindFilter) {
         : providerModels.map((model) => model.id);
 
       if (isCompatibleProvider && rawModelIds.length === 0 && !UPSTREAM_CONNECTION_RE.test(providerId)) {
-        rawModelIds = await fetchCompatibleModelIds(conn);
+        const liveIds = await Promise.all(providerConnections.map((connection) => fetchCompatibleModelIds(connection)));
+        rawModelIds = [...new Set(liveIds.flat())];
       }
 
       // Config-driven live catalog override (e.g. Kiro returns dynamic
       // -thinking/-agentic variants per account). On failure, fall back to
       // whatever rawModelIds already holds.
       const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
-      if (liveResolver && !hasExplicitEnabledModels) {
-        try {
-          const live = await liveResolver(conn);
-          if (live?.models?.length) {
-            rawModelIds = live.models.map((m) => m.id);
-            liveModelKindById = new Map(
-              live.models
-                .filter((m) => m?.id)
-                .map((m) => [m.id, modelKind(m)])
-            );
-            liveCapabilitiesById = new Map(
-              live.models
-                .filter((m) => m?.id && m.capabilities)
-                .map((m) => [m.id, m.capabilities])
-            );
+      if (liveResolver && !allHaveExplicitEnabledModels) {
+        for (const [index, connection] of providerConnections.entries()) {
+          if (enabledModelLists[index].length > 0) continue;
+          try {
+            const live = await liveResolver(connection);
+            if (live?.models?.length) {
+              rawModelIds = [...new Set([...rawModelIds, ...live.models.map((m) => m.id)])];
+              for (const model of live.models) {
+                if (!model?.id) continue;
+                liveModelKindById.set(model.id, modelKind(model));
+                if (model.capabilities) liveCapabilitiesById.set(model.id, model.capabilities);
+              }
+            }
+          } catch (err) {
+            console.log(`Live model fetch failed for ${providerId}: ${err?.message || err}`);
           }
-        } catch (err) {
-          console.log(`Live model fetch failed for ${providerId}: ${err?.message || err}`);
         }
       }
 
@@ -558,13 +574,16 @@ export async function OPTIONS() {
  * GET /v1/models - OpenAI compatible models list (LLM/chat models only by default).
  * For other capabilities use /v1/models/{kind} (image, tts, stt, embedding, image-to-text, web).
  */
-export async function GET() {
+export async function GET(request) {
   try {
-    const data = await buildModelsList([LLM_KIND]);
+    const allowedConnectionIds = await resolveAllowedConnectionIds(request);
+    const data = await buildModelsList([LLM_KIND], allowedConnectionIds);
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error fetching models:", error);
     return Response.json(
       { error: { message: error.message, type: "server_error" } },

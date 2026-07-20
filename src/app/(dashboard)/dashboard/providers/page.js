@@ -97,6 +97,7 @@ const APIKEY_INITIAL_VISIBLE = 20;
 export default function ProvidersPage() {
   const [connections, setConnections] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAllApikey, setShowAllApikey] = useState(false);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
@@ -147,12 +148,16 @@ export default function ProvidersPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const statusRes = await fetch("/api/auth/status", { cache: "no-store" });
+        const status = await statusRes.json();
+        const user = status.user || null;
+        setCurrentUser(user);
         const [connectionsRes, nodesRes] = await Promise.all([
           fetch("/api/providers"),
-          fetch("/api/provider-nodes"),
+          user?.role === "admin" ? fetch("/api/provider-nodes") : Promise.resolve(null),
         ]);
         const connectionsData = await connectionsRes.json();
-        const nodesData = await nodesRes.json();
+        const nodesData = nodesRes ? await nodesRes.json() : { nodes: [] };
         if (connectionsRes.ok)
           setConnections(connectionsData.connections || []);
         if (nodesRes.ok) setProviderNodes(nodesData.nodes || []);
@@ -197,6 +202,9 @@ export default function ProvidersPage() {
     const total = providerConnections.length;
     const allDisabled =
       total > 0 && providerConnections.every((c) => c.isActive === false);
+    const manageableConnections = providerConnections.filter((connection) => connection.canManage !== false);
+    const manageableTotal = manageableConnections.length;
+    const allManageableDisabled = manageableTotal > 0 && manageableConnections.every((connection) => connection.isActive === false);
 
     const latestError = errorConns.sort(
       (a, b) => new Date(b.lastErrorAt || 0) - new Date(a.lastErrorAt || 0),
@@ -206,7 +214,7 @@ export default function ProvidersPage() {
       ? getRelativeTime(latestError.lastErrorAt)
       : null;
 
-    return { connected, error, total, errorCode, errorTime, allDisabled };
+    return { connected, error, total, errorCode, errorTime, allDisabled, manageableTotal, allManageableDisabled };
   };
 
   // Toggle all connections for a provider on/off. authType may be a single
@@ -214,7 +222,7 @@ export default function ProvidersPage() {
   const handleToggleProvider = async (providerId, authType, newActive) => {
     const authTypes = Array.isArray(authType) ? authType : [authType];
     const matches = (c) =>
-      c.provider === providerId && authTypes.includes(c.authType);
+      c.provider === providerId && authTypes.includes(c.authType) && c.canManage !== false;
     const providerConns = connections.filter(matches);
     setConnections((prev) =>
       prev.map((c) => (matches(c) ? { ...c, isActive: newActive } : c)),
@@ -281,12 +289,13 @@ export default function ProvidersPage() {
     "oauth",
   );
   const freeEntries = Object.entries(FREE_PROVIDERS)
-    .filter(([, info]) => !info.hidden && matchSearch(info.name))
+    .filter(([, info]) => !info.hidden && !(currentUser?.role === "member" && info.noAuth) && matchSearch(info.name))
     .sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
   const freeTierEntries = sortByPriority(
     Object.entries(FREE_TIER_PROVIDERS).filter(
       ([, info]) =>
         !info.hidden &&
+        !(currentUser?.role === "member" && info.noAuth) &&
         matchSearch(info.name) &&
         (info.serviceKinds ?? ["llm"]).includes("llm"),
     ),
@@ -342,6 +351,7 @@ export default function ProvidersPage() {
       )}
 
       {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
+      {currentUser?.role === "admin" && (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
@@ -392,6 +402,7 @@ export default function ProvidersPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* OAuth Providers */}
       {oauthEntries.length > 0 && (
@@ -620,7 +631,7 @@ export default function ProvidersPage() {
 }
 
 function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
-  const { connected, error, errorCode, errorTime, allDisabled } = stats;
+  const { connected, error, errorCode, errorTime, allDisabled, manageableTotal, allManageableDisabled } = stats;
   const isNoAuth = !!provider.noAuth;
 
   const dotColors = {
@@ -687,20 +698,20 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {stats.total > 0 && (
+            {manageableTotal > 0 && (
               <div
                 className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onToggle(!allDisabled ? false : true);
+                  onToggle(allManageableDisabled);
                 }}
               >
                 <Toggle
                   size="sm"
-                  checked={!allDisabled}
+                  checked={!allManageableDisabled}
                   onChange={() => {}}
-                  title={allDisabled ? "Enable provider" : "Disable provider"}
+                  title={allManageableDisabled ? "Enable your connections" : "Disable your connections"}
                 />
               </div>
             )}
@@ -736,7 +747,7 @@ function ApiKeyProviderCard({
   authType,
   onToggle,
 }) {
-  const { connected, error, errorCode, errorTime, allDisabled } = stats;
+  const { connected, error, errorCode, errorTime, allDisabled, manageableTotal, allManageableDisabled } = stats;
   const isCompatible = providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
   const isAnthropicCompatible = providerId.startsWith(
     ANTHROPIC_COMPATIBLE_PREFIX,
@@ -825,20 +836,20 @@ function ApiKeyProviderCard({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {stats.total > 0 && (
+            {manageableTotal > 0 && (
               <div
                 className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onToggle(!allDisabled ? false : true);
+                  onToggle(allManageableDisabled);
                 }}
               >
                 <Toggle
                   size="sm"
-                  checked={!allDisabled}
+                  checked={!allManageableDisabled}
                   onChange={() => {}}
-                  title={allDisabled ? "Enable provider" : "Disable provider"}
+                  title={allManageableDisabled ? "Enable your connections" : "Disable your connections"}
                 />
               </div>
             )}

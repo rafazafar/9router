@@ -24,11 +24,12 @@ function rowToConn(row) {
     isActive: row.isActive === 1 || row.isActive === true,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    ownerUserId: row.ownerUserId || null,
   };
 }
 
 function connToRow(c) {
-  const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
+  const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ownerUserId, ...rest } = c;
   return {
     id,
     provider,
@@ -40,19 +41,20 @@ function connToRow(c) {
     data: stringifyJson(rest),
     createdAt,
     updatedAt,
+    ownerUserId: ownerUserId || null,
   };
 }
 
 function upsert(db, c) {
   const r = connToRow(c);
   db.run(
-    `INSERT INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt, ownerUserId)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        provider=excluded.provider, authType=excluded.authType, name=excluded.name,
        email=excluded.email, priority=excluded.priority, isActive=excluded.isActive,
-       data=excluded.data, updatedAt=excluded.updatedAt`,
-    [r.id, r.provider, r.authType, r.name, r.email, r.priority, r.isActive, r.data, r.createdAt, r.updatedAt]
+       data=excluded.data, updatedAt=excluded.updatedAt, ownerUserId=excluded.ownerUserId`,
+    [r.id, r.provider, r.authType, r.name, r.email, r.priority, r.isActive, r.data, r.createdAt, r.updatedAt, r.ownerUserId]
   );
 }
 
@@ -80,6 +82,30 @@ export async function getProviderConnections(filter = {}) {
   return list;
 }
 
+export async function getAccessibleProviderConnections(principal, filter = {}) {
+  if (!principal?.userId) return [];
+  const db = await getAdapter();
+  const where = [];
+  const params = [];
+  if (principal.role !== "admin") {
+    where.push(`(ownerUserId = ? OR id IN (SELECT connectionId FROM connectionGrants WHERE userId = ?))`);
+    params.push(principal.userId, principal.userId);
+  }
+  if (filter.provider) { where.push("provider = ?"); params.push(filter.provider); }
+  if (filter.isActive !== undefined) { where.push("isActive = ?"); params.push(filter.isActive ? 1 : 0); }
+  const rows = db.all(`SELECT * FROM providerConnections${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`, params);
+  return rows.map(rowToConn).sort((a, b) => (a.priority || 999) - (b.priority || 999));
+}
+
+export async function getAccessibleProviderConnectionById(principal, id) {
+  const list = await getAccessibleProviderConnections(principal);
+  return list.find((connection) => connection.id === id) || null;
+}
+
+export function canManageProviderConnection(principal, connection) {
+  return !!principal && !!connection && (principal.role === "admin" || connection.ownerUserId === principal.userId);
+}
+
 export async function getProviderConnectionById(id) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
@@ -87,13 +113,32 @@ export async function getProviderConnectionById(id) {
 }
 
 // Internal sync reorder — must be called INSIDE a transaction
-function reorderInTx(db, providerId) {
-  const list = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [providerId]).map(rowToConn);
+function reorderInTx(db, providerId, ownerUserId = undefined, movedConnectionId = null, requestedPriority = null) {
+  let rows;
+  if (ownerUserId === undefined) {
+    rows = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [providerId]);
+  } else if (ownerUserId === null) {
+    rows = db.all(`SELECT * FROM providerConnections WHERE provider = ? AND ownerUserId IS NULL`, [providerId]);
+  } else {
+    rows = db.all(`SELECT * FROM providerConnections WHERE provider = ? AND ownerUserId = ?`, [providerId, ownerUserId]);
+  }
+  const list = rows.map(rowToConn);
   list.sort((a, b) => {
     const pDiff = (a.priority || 0) - (b.priority || 0);
     if (pDiff !== 0) return pDiff;
-    return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+    const aUpdatedAt = Date.parse(a.updatedAt) || 0;
+    const bUpdatedAt = Date.parse(b.updatedAt) || 0;
+    const updatedDiff = bUpdatedAt - aUpdatedAt;
+    if (updatedDiff !== 0) return updatedDiff;
+    return a.id.localeCompare(b.id);
   });
+  if (movedConnectionId && Number.isInteger(requestedPriority)) {
+    const movedIndex = list.findIndex((connection) => connection.id === movedConnectionId);
+    if (movedIndex !== -1) {
+      const [moved] = list.splice(movedIndex, 1);
+      list.splice(Math.min(Math.max(requestedPriority - 1, 0), list.length), 0, moved);
+    }
+  }
   list.forEach((c, i) => {
     db.run(`UPDATE providerConnections SET priority = ? WHERE id = ?`, [i + 1, c.id]);
   });
@@ -106,12 +151,14 @@ export async function createProviderConnection(data) {
 
   db.transaction(() => {
     const all = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [data.provider]).map(rowToConn);
+    const ownerUserId = data.ownerUserId || null;
+    const owned = all.filter((connection) => connection.ownerUserId === ownerUserId);
 
     let existing = null;
     if (data.authType === "oauth" && data.email) {
       const incomingUsername = data.providerSpecificData?.username;
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
-      existing = all.find(c => {
+      existing = owned.find(c => {
         if (c.authType !== "oauth" || c.email !== data.email) return false;
 
         // Codex/OpenAI can issue multiple OAuth grants for the same email.
@@ -142,13 +189,19 @@ export async function createProviderConnection(data) {
         return true;
       });
     } else if (data.authType === "apikey" && data.name) {
-      existing = all.find(c => c.authType === "apikey" && c.name === data.name);
+      existing = owned.find(c => c.authType === "apikey" && c.name === data.name);
     }
     // access_token: never dedup — user manages duplicates manually
 
     if (existing) {
-      const merged = { ...existing, ...data, updatedAt: now };
+      const merged = { ...existing, updatedAt: now };
+      for (const field of ["authType", "name", "email", "priority", "isActive", "providerSpecificData", ...OPTIONAL_FIELDS]) {
+        if (data[field] !== undefined) merged[field] = data[field];
+      }
       upsert(db, merged);
+      if (data.priority !== undefined) {
+        reorderInTx(db, merged.provider, merged.ownerUserId, merged.id, data.priority);
+      }
       result = merged;
       return;
     }
@@ -159,7 +212,7 @@ export async function createProviderConnection(data) {
     }
     let connectionPriority = data.priority;
     if (!connectionPriority) {
-      connectionPriority = all.reduce((m, c) => Math.max(m, c.priority || 0), 0) + 1;
+      connectionPriority = owned.reduce((m, c) => Math.max(m, c.priority || 0), 0) + 1;
     }
 
     const conn = {
@@ -171,6 +224,7 @@ export async function createProviderConnection(data) {
       isActive: data.isActive !== undefined ? data.isActive : true,
       createdAt: now,
       updatedAt: now,
+      ownerUserId: data.ownerUserId || null,
     };
     for (const f of OPTIONAL_FIELDS) {
       if (data[f] !== undefined && data[f] !== null) conn[f] = data[f];
@@ -181,7 +235,7 @@ export async function createProviderConnection(data) {
     if (data.email !== undefined) conn.email = data.email;
 
     upsert(db, conn);
-    reorderInTx(db, data.provider);
+    reorderInTx(db, data.provider, conn.ownerUserId, conn.id, conn.priority);
     result = conn;
   });
 
@@ -198,7 +252,11 @@ export async function updateProviderConnection(id, data) {
     const existing = rowToConn(row);
     const merged = { ...existing, ...data, updatedAt: new Date().toISOString() };
     upsert(db, merged);
-    if (data.priority !== undefined) reorderInTx(db, existing.provider);
+    const groupChanged = merged.provider !== existing.provider || merged.ownerUserId !== existing.ownerUserId;
+    if (groupChanged) reorderInTx(db, existing.provider, existing.ownerUserId);
+    if (groupChanged || data.priority !== undefined) {
+      reorderInTx(db, merged.provider, merged.ownerUserId, id, merged.priority);
+    }
     result = merged;
   });
   return result;
@@ -208,10 +266,11 @@ export async function deleteProviderConnection(id) {
   const db = await getAdapter();
   let ok = false;
   db.transaction(() => {
-    const row = db.get(`SELECT provider FROM providerConnections WHERE id = ?`, [id]);
+    const row = db.get(`SELECT provider, ownerUserId FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
+    db.run(`DELETE FROM connectionGrants WHERE connectionId = ?`, [id]);
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
-    reorderInTx(db, row.provider);
+    reorderInTx(db, row.provider, row.ownerUserId);
     ok = true;
   });
   return ok;
@@ -219,14 +278,25 @@ export async function deleteProviderConnection(id) {
 
 export async function deleteProviderConnectionsByProvider(providerId) {
   const db = await getAdapter();
-  const before = db.get(`SELECT COUNT(*) AS n FROM providerConnections WHERE provider = ?`, [providerId]);
-  db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
-  return before?.n || 0;
+  let deleted = 0;
+  db.transaction(() => {
+    const before = db.get(`SELECT COUNT(*) AS n FROM providerConnections WHERE provider = ?`, [providerId]);
+    deleted = before?.n || 0;
+    db.run(
+      `DELETE FROM connectionGrants WHERE connectionId IN (SELECT id FROM providerConnections WHERE provider = ?)`,
+      [providerId]
+    );
+    db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
+  });
+  return deleted;
 }
 
 export async function reorderProviderConnections(providerId) {
   const db = await getAdapter();
-  db.transaction(() => reorderInTx(db, providerId));
+  db.transaction(() => {
+    const owners = db.all(`SELECT DISTINCT ownerUserId FROM providerConnections WHERE provider = ?`, [providerId]);
+    for (const owner of owners) reorderInTx(db, providerId, owner.ownerUserId ?? null);
+  });
 }
 
 export async function cleanupProviderConnections() {

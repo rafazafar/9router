@@ -1,10 +1,46 @@
 import { NextResponse } from "next/server";
 import {
-  getProviderConnectionById,
+  getAccessibleProviderConnectionById,
+  canManageProviderConnection,
   getProxyPoolById,
   updateProviderConnection,
   deleteProviderConnection,
 } from "@/models";
+import { authorizationErrorResponse, requireConnectionAccess, requireUser } from "@/lib/auth/authorization";
+
+const MEMBER_PROVIDER_DATA_FIELDS = [
+  "nodeName", "prefix", "apiType", "enabledModels", "authMethod", "provider",
+  "chatgptPlanType", "region", "projectId", "accountId",
+];
+const SECRET_FIELDS = new Set(["clientsecret", "copilottoken", "cookie", "apikey", "accesstoken", "refreshtoken", "idtoken", "authorization", "password", "headers", "token", "secret", "credential", "credentials"]);
+
+function isSecretField(key) {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return SECRET_FIELDS.has(normalized)
+    || normalized.includes("authorization")
+    || normalized.includes("headers")
+    || normalized.includes("apikey")
+    || normalized.includes("token")
+    || normalized.includes("secret")
+    || normalized.includes("credential")
+    || normalized.includes("password");
+}
+
+function redactSecrets(value) {
+  if (Array.isArray(value)) return value.map(redactSecrets);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !isSecretField(key))
+    .map(([key, item]) => [key, redactSecrets(item)]));
+}
+
+function sanitizeProviderSpecificData(data, principal) {
+  if (!data || typeof data !== "object") return undefined;
+  if (principal.role !== "admin") {
+    return Object.fromEntries(MEMBER_PROVIDER_DATA_FIELDS.filter((field) => data[field] !== undefined).map((field) => [field, data[field]]));
+  }
+  return redactSecrets(data);
+}
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
@@ -63,21 +99,26 @@ function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, has
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const connection = await getProviderConnectionById(id);
+    const principal = await requireUser(request);
+    const connection = await requireConnectionAccess(principal, id);
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
     // Hide sensitive fields
-    const result = { ...connection };
+    const result = redactSecrets(connection);
     delete result.apiKey;
     delete result.accessToken;
     delete result.refreshToken;
     delete result.idToken;
+    result.providerSpecificData = sanitizeProviderSpecificData(connection.providerSpecificData, principal);
+    result.canManage = canManageProviderConnection(principal, connection);
 
     return NextResponse.json({ connection: result });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error fetching connection:", error);
     return NextResponse.json({ error: "Failed to fetch connection" }, { status: 500 });
   }
@@ -87,6 +128,7 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
+    const principal = await requireUser(request);
     const body = await request.json();
     const {
       name,
@@ -101,14 +143,43 @@ export async function PUT(request, { params }) {
       providerSpecificData
     } = body;
 
-    const existing = await getProviderConnectionById(id);
+    const existing = await requireConnectionAccess(principal, id);
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+    if (!canManageProviderConnection(principal, existing)) {
+      return NextResponse.json({ error: "Shared connections cannot be modified" }, { status: 403 });
+    }
+    if (principal.role !== "admin" && globalPriority !== undefined) {
+      return NextResponse.json({ error: "Global priority requires administrator access" }, { status: 403 });
+    }
+    if (principal.role !== "admin" && defaultModel !== undefined) {
+      return NextResponse.json({ error: "Default model requires administrator access" }, { status: 403 });
+    }
+    if (principal.role !== "admin" && priority !== undefined && (!Number.isInteger(priority) || priority < 1)) {
+      return NextResponse.json({ error: "Priority must be a positive integer" }, { status: 400 });
     }
 
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
+    }
+    if (principal.role !== "admin" && (body.proxyPoolId !== undefined || proxyConfig.hasAnyProxyField)) {
+      return NextResponse.json({ error: "Members cannot configure proxies" }, { status: 403 });
+    }
+    if (principal.role !== "admin" && providerSpecificData && typeof providerSpecificData === "object") {
+      const forbiddenFields = [
+        "baseUrl", "baseURL", "endpoint", "azureEndpoint", "host", "url",
+        "connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy", "proxyPoolId",
+        "clientSecret", "copilotToken", "cookie", "apiKey", "accessToken", "refreshToken", "idToken",
+      ];
+      if (forbiddenFields.some((field) => Object.hasOwn(providerSpecificData, field))) {
+        return NextResponse.json({ error: "Members cannot change endpoints, proxies, or credential metadata" }, { status: 403 });
+      }
+      const allowedMemberFields = new Set(MEMBER_PROVIDER_DATA_FIELDS);
+      if (Object.keys(providerSpecificData).some((field) => !allowedMemberFields.has(field))) {
+        return NextResponse.json({ error: "Unsupported provider metadata update" }, { status: 403 });
+      }
     }
 
     const proxyPoolResult = await normalizeProxyPoolUpdate(body.proxyPoolId);
@@ -123,9 +194,9 @@ export async function PUT(request, { params }) {
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
-    if (testStatus !== undefined) updateData.testStatus = testStatus;
-    if (lastError !== undefined) updateData.lastError = lastError;
-    if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;
+    if (principal.role === "admin" && testStatus !== undefined) updateData.testStatus = testStatus;
+    if (principal.role === "admin" && lastError !== undefined) updateData.lastError = lastError;
+    if (principal.role === "admin" && lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;
 
     if (
       shouldMergeProviderSpecificData(
@@ -158,14 +229,17 @@ export async function PUT(request, { params }) {
     const updated = await updateProviderConnection(id, updateData);
 
     // Hide sensitive fields
-    const result = { ...updated };
+    const result = redactSecrets(updated);
     delete result.apiKey;
     delete result.accessToken;
     delete result.refreshToken;
     delete result.idToken;
+    result.providerSpecificData = sanitizeProviderSpecificData(updated.providerSpecificData, principal);
 
     return NextResponse.json({ connection: result });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error updating connection:", error);
     return NextResponse.json({ error: "Failed to update connection" }, { status: 500 });
   }
@@ -175,6 +249,11 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    const principal = await requireUser(request);
+    const existing = await requireConnectionAccess(principal, id);
+    if (!canManageProviderConnection(principal, existing)) {
+      return NextResponse.json({ error: "Shared connections cannot be deleted" }, { status: 403 });
+    }
 
     const deleted = await deleteProviderConnection(id);
     if (!deleted) {
@@ -183,6 +262,8 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({ message: "Connection deleted successfully" });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error deleting connection:", error);
     return NextResponse.json({ error: "Failed to delete connection" }, { status: 500 });
   }

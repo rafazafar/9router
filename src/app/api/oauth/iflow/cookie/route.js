@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { requireUser } from "@/lib/auth/authorization";
 
 /**
  * iFlow Cookie-Based Authentication
@@ -8,6 +9,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
+    const principal = await requireUser(request);
     const { cookie } = await request.json();
 
     if (!cookie || typeof cookie !== "string") {
@@ -118,6 +120,7 @@ export async function POST(request) {
       },
       testStatus: "active",
       isActive: true,
+      ownerUserId: principal.userId,
     });
 
     return NextResponse.json({

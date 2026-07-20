@@ -1,7 +1,8 @@
 // Ensure proxyFetch is loaded to patch globalThis.fetch
 import "open-sse/index.js";
 
-import { getProviderConnectionById } from "@/lib/localDb";
+import { canManageProviderConnection, getAccessibleProviderConnectionById } from "@/lib/localDb";
+import { authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
 import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "open-sse/services/usage.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "../route.js";
@@ -47,8 +48,8 @@ function getResponseForConsumeResult(result, redeemRequestId) {
   }, { status: result.status >= 400 && result.status < 500 ? result.status : 502 });
 }
 
-async function getCodexConnection(connectionId) {
-  const connection = await getProviderConnectionById(connectionId);
+async function getCodexConnection(principal, connectionId) {
+  const connection = await getAccessibleProviderConnectionById(principal, connectionId);
   if (!connection) {
     return { response: Response.json({ error: "Connection not found" }, { status: 404 }) };
   }
@@ -85,13 +86,17 @@ async function refreshCodexConnection(connection, proxyOptions) {
   }
 }
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   let connection;
   try {
+    const principal = await requireUser(request);
     const { connectionId } = await params;
-    const resolved = await getCodexConnection(connectionId);
+    const resolved = await getCodexConnection(principal, connectionId);
     if (resolved.response) return resolved.response;
     ({ connection } = resolved);
+    if (!canManageProviderConnection(principal, connection)) {
+      return Response.json({ error: "Shared connections cannot consume reset credits" }, { status: 403 });
+    }
     const { isOAuth, proxyOptions } = resolved;
 
     if (isOAuth) {
@@ -112,6 +117,8 @@ export async function GET(_request, { params }) {
 
     return Response.json(result);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
     return Response.json({ error: error.message }, { status: 500 });
@@ -121,10 +128,14 @@ export async function GET(_request, { params }) {
 export async function POST(request, { params }) {
   let connection;
   try {
+    const principal = await requireUser(request);
     const { connectionId } = await params;
-    const resolved = await getCodexConnection(connectionId);
+    const resolved = await getCodexConnection(principal, connectionId);
     if (resolved.response) return resolved.response;
     ({ connection } = resolved);
+    if (!canManageProviderConnection(principal, connection)) {
+      return Response.json({ error: "Shared connections cannot consume reset credits" }, { status: 403 });
+    }
     const { isOAuth, proxyOptions } = resolved;
 
     if (isOAuth) {
@@ -149,6 +160,8 @@ export async function POST(request, { params }) {
 
     return getResponseForConsumeResult(consumeResult, redeemRequestId);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
     return Response.json({ error: error.message }, { status: 500 });

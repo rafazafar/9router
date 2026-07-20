@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { getModelAliases, getProviderConnections, setModelAliasValidated, deleteModelAliasValidated } from "@/models";
 import { getCanonicalAliasSuggestions, getDependentAliases, validateModelAlias } from "open-sse/services/modelAliases.js";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/models/alias - Get all aliases
-export async function GET() {
+export async function GET(request) {
   try {
+    await requireAdmin(request);
     const [aliases, connections] = await Promise.all([
       getModelAliases(),
       getProviderConnections(),
@@ -19,6 +21,8 @@ export async function GET() {
       suggestions: getCanonicalAliasSuggestions(aliases, { providerIds: connectedProviderIds }),
     });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.log("Error fetching aliases:", error);
     return NextResponse.json({ error: "Failed to fetch aliases" }, { status: 500 });
   }
@@ -27,6 +31,7 @@ export async function GET() {
 // PUT /api/models/alias - Set model alias
 export async function PUT(request) {
   try {
+    await requireAdmin(request);
     const body = await request.json();
     const { model, alias, override = false } = body;
 
@@ -45,6 +50,8 @@ export async function PUT(request) {
 
     return NextResponse.json({ success: true, model: validated.target, alias: validated.alias });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     if (!error.status || error.status >= 500) console.log("Error updating alias:", error);
     return NextResponse.json(
       { error: error.message || "Failed to update alias", code: error.code },
@@ -56,6 +63,7 @@ export async function PUT(request) {
 // DELETE /api/models/alias?alias=xxx - Delete alias
 export async function DELETE(request) {
   try {
+    await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const alias = searchParams.get("alias");
 
@@ -76,6 +84,8 @@ export async function DELETE(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     if (!error.status || error.status >= 500) console.log("Error deleting alias:", error);
     return NextResponse.json(
       { error: error.message || "Failed to delete alias", code: error.code, dependents: error.dependents },

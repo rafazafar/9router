@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { getPricing, updatePricing, resetPricing, resetAllPricing } from "@/lib/localDb.js";
 import { getDefaultPricing } from "open-sse/providers/pricing.js";
+import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
 
 /**
  * GET /api/pricing
  * Get current pricing configuration (merged user + defaults)
  */
-export async function GET() {
+export async function GET(request) {
   try {
+    await requireAdmin(request);
     const pricing = await getPricing();
     return NextResponse.json(pricing);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error("Error fetching pricing:", error);
     return NextResponse.json(
       { error: "Failed to fetch pricing" },
@@ -26,6 +30,7 @@ export async function GET() {
  */
 export async function PATCH(request) {
   try {
+    await requireAdmin(request);
     const body = await request.json();
 
     // Validate body structure
@@ -75,6 +80,8 @@ export async function PATCH(request) {
     const updatedPricing = await updatePricing(body);
     return NextResponse.json(updatedPricing);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error("Error updating pricing:", error);
     return NextResponse.json(
       { error: "Failed to update pricing" },
@@ -90,6 +97,7 @@ export async function PATCH(request) {
  */
 export async function DELETE(request) {
   try {
+    await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider");
     const model = searchParams.get("model");
@@ -108,6 +116,8 @@ export async function DELETE(request) {
     const pricing = await getPricing();
     return NextResponse.json(pricing);
   } catch (error) {
+    const authResponse = authorizationErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error("Error resetting pricing:", error);
     return NextResponse.json(
       { error: "Failed to reset pricing" },

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSettings, validateApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
-import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { getDashboardAuthSession, verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { getUserById } from "@/lib/localDb";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
@@ -26,13 +27,14 @@ const PUBLIC_API_PATHS = [
   "/api/auth/login",
   "/api/auth/logout",
   "/api/auth/status",
-  "/api/auth/oidc",
+  "/api/auth/oidc/start",
+  "/api/auth/oidc/callback",
   "/api/version",
   "/api/settings/require-login",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
-const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/codex"];
+const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/codex", "/responses"];
 
 // Always require JWT token regardless of requireLogin setting
 const ALWAYS_PROTECTED = [
@@ -42,6 +44,24 @@ const ALWAYS_PROTECTED = [
   "/api/version/update",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
+];
+
+const ADMIN_ONLY_PREFIXES = [
+  "/api/settings", "/api/provider-nodes", "/api/proxy-pools", "/api/combos",
+  "/api/cloud", "/api/pricing", "/api/cli-tools", "/api/mcp", "/api/tunnel",
+  "/api/translator", "/api/database", "/api/oauth/cursor/auto-import", "/api/oauth/kiro/auto-import",
+  "/api/members",
+  "/api/models/alias", "/api/models/custom", "/api/models/disabled", "/api/models/test",
+  "/api/headroom", "/api/pxpipe", "/api/shutdown", "/api/version", "/api/media-providers",
+  "/api/auth/reset-password",
+  "/api/providers/suggested-models",
+];
+
+const ADMIN_DASHBOARD_PREFIXES = [
+  "/dashboard/endpoint", "/dashboard/model-aliases", "/dashboard/combos", "/dashboard/quota",
+  "/dashboard/token-saver", "/dashboard/cli-tools", "/dashboard/members", "/dashboard/console-log",
+  "/dashboard/translator", "/dashboard/proxy-pools", "/dashboard/skills", "/dashboard/media-providers",
+  "/dashboard/profile", "/dashboard/mitm", "/dashboard/pxpipe",
 ];
 
 // Require auth, but allow through if requireLogin is disabled
@@ -134,8 +154,8 @@ async function hasValidApiKey(request) {
 }
 
 async function canAccessPublicLlmApi(request) {
-  if (isLocalRequest(request)) return true;
   if (await hasValidCliToken(request)) return true;
+  if (await hasValidToken(request)) return true;
   return await hasValidApiKey(request);
 }
 
@@ -151,6 +171,14 @@ async function hasValidToken(request) {
   return await verifyDashboardAuthToken(token);
 }
 
+async function hasAdminToken(request) {
+  const token = request.cookies.get("auth_token")?.value;
+  const session = await getDashboardAuthSession(token);
+  if (!session?.sub) return false;
+  const user = await getUserById(session.sub);
+  return !!user && user.status === "active" && user.role === "admin" && user.sessionVersion === session.sessionVersion;
+}
+
 // Read settings directly from DB to avoid self-fetch deadlock in proxy
 async function loadSettings() {
   try {
@@ -161,10 +189,7 @@ async function loadSettings() {
 }
 
 async function isAuthenticated(request) {
-  if (await hasValidToken(request)) return true;
-  const settings = await loadSettings();
-  if (settings && settings.requireLogin === false) return true;
-  return false;
+  return await hasValidToken(request);
 }
 
 function isPublicApi(pathname) {
@@ -192,7 +217,7 @@ export async function proxy(request) {
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
   if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
-    if (await hasValidCliToken(request) || await hasValidToken(request))
+    if (await hasValidCliToken(request) || await hasAdminToken(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -205,6 +230,10 @@ export async function proxy(request) {
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
+    if (ADMIN_ONLY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      if (await hasValidCliToken(request) || await hasAdminToken(request)) return NextResponse.next();
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+    }
     if (await hasValidCliToken(request) || await isAuthenticated(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -212,6 +241,12 @@ export async function proxy(request) {
 
   // Protect all dashboard routes
   if (pathname.startsWith("/dashboard")) {
+    if (pathname === "/dashboard" && await hasValidToken(request) && !await hasAdminToken(request)) {
+      return NextResponse.redirect(new URL("/dashboard/providers", request.url));
+    }
+    if (ADMIN_DASHBOARD_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      if (!await hasAdminToken(request)) return NextResponse.redirect(new URL("/dashboard/providers", request.url));
+    }
     let requireLogin = true;
     let tunnelDashboardAccess = true;
 
@@ -234,9 +269,6 @@ export async function proxy(request) {
     } catch {
       // On error, keep defaults (require login, block tunnel)
     }
-
-    // If login not required, allow through
-    if (!requireLogin) return NextResponse.next();
 
     // Verify JWT token
     const token = request.cookies.get("auth_token")?.value;

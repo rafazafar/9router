@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getProviderConnectionById } from "@/lib/localDb";
+import { canManageProviderConnection, getAccessibleProviderConnectionById } from "@/lib/localDb";
+import { requireConnectionAccess, requireUser } from "@/lib/auth/authorization";
 import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
@@ -13,9 +14,10 @@ import { pingModelByKind } from "@/app/api/models/test/ping";
 export async function POST(request, { params }) {
   try {
     const { id } = await params;
-    const connection = await getProviderConnectionById(id);
-    if (!connection) {
-      return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    const principal = await requireUser(request);
+    const connection = await requireConnectionAccess(principal, id);
+    if (!canManageProviderConnection(principal, connection)) {
+      return NextResponse.json({ error: "Shared connections cannot be tested or refreshed" }, { status: 403 });
     }
 
     const providerId = connection.provider;
