@@ -249,6 +249,20 @@ describe("multi-user provider routes", () => {
 });
 
 describe("multi-user OAuth routes", () => {
+  it("allows members to start Antigravity OAuth with server-bound ownership", async () => {
+    const route = await import("@/app/api/oauth/[provider]/[action]/route.js");
+    const response = await route.GET(
+      await requestFor(alice, "http://localhost/api/oauth/antigravity/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback"),
+      { params: Promise.resolve({ provider: "antigravity", action: "authorize" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.url || body.authUrl || body.authorizationUrl).toContain("accounts.google.com");
+    const { isOAuthOwner } = await import("@/lib/oauth/ownerState.js");
+    expect(await isOAuthOwner(body.state, alice.id)).toBe(true);
+  });
+
   it("blocks member-controlled OAuth upstream URLs before network access", async () => {
     const route = await import("@/app/api/oauth/[provider]/[action]/route.js");
     const gitlabResponse = await route.GET(

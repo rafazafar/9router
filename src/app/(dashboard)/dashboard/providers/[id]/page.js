@@ -1302,6 +1302,7 @@ export default function ProviderDetailPage() {
         {providerId === "iflow" && <IFlowCookieModal isOpen={showIFlowCookieModal} onSuccess={handleIFlowCookieSuccess} onClose={() => setShowIFlowCookieModal(false)} />}
         <AddApiKeyModal isOpen={showAddApiKeyModal} provider={providerId} providerName={providerInfo.name} isCompatible={false} isAnthropic={false} authType={providerInfo?.authType} authHint={providerInfo?.authHint} website={providerInfo?.website} proxyPools={[]} error={addConnectionError} onSave={handleSaveApiKey} onBulkDone={fetchConnections} onClose={() => { setAddConnectionError(""); setShowAddApiKeyModal(false); }} />
         <EditConnectionModal isOpen={showEditModal} connection={selectedConnection} proxyPools={[]} onSave={handleUpdateConnection} onClose={() => setShowEditModal(false)} />
+        <ConfirmModal isOpen={showAgRiskModal} onClose={() => setShowAgRiskModal(false)} onConfirm={handleAgRiskConfirm} title="Risk Notice" message={providerInfo?.deprecationNotice} confirmText="I Understand, Continue" cancelText="Cancel" variant="danger" />
         <ConfirmModal isOpen={!!confirmState} onClose={() => setConfirmState(null)} onConfirm={confirmState?.onConfirm} title={confirmState?.title || "Confirm"} message={confirmState?.message} variant="danger" />
       </div>
     );
