@@ -22,6 +22,11 @@ export default function APIPageClient({ machineId }) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
+  const [newDailyRequestLimit, setNewDailyRequestLimit] = useState("");
+  const [newDailyTokenLimit, setNewDailyTokenLimit] = useState("");
+  const [newAllowedConnectionIds, setNewAllowedConnectionIds] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [editingKey, setEditingKey] = useState(null);
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
@@ -259,6 +264,7 @@ export default function APIPageClient({ machineId }) {
       const keysData = await keysRes.json();
       if (keysRes.ok) {
         setKeys(keysData.keys || []);
+        setConnections(keysData.connections || []);
       }
     } catch (error) {
       console.log("Error fetching data:", error);
@@ -614,7 +620,12 @@ export default function APIPageClient({ machineId }) {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName }),
+        body: JSON.stringify({
+          name: newKeyName,
+          dailyRequestLimit: newDailyRequestLimit || null,
+          dailyTokenLimit: newDailyTokenLimit || null,
+          allowedConnectionIds: newAllowedConnectionIds,
+        }),
       });
       const data = await res.json();
 
@@ -622,10 +633,39 @@ export default function APIPageClient({ machineId }) {
         setCreatedKey(data.key);
         await fetchData();
         setNewKeyName("");
+        setNewDailyRequestLimit("");
+        setNewDailyTokenLimit("");
+        setNewAllowedConnectionIds([]);
         setShowAddModal(false);
       }
     } catch (error) {
       console.log("Error creating key:", error);
+    }
+  };
+
+  const toggleAllowedConnection = (id, current, setter) => {
+    setter(current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  };
+
+  const handleUpdateKeyPolicy = async () => {
+    if (!editingKey) return;
+    try {
+      const res = await fetch(`/api/keys/${editingKey.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dailyRequestLimit: editingKey.dailyRequestLimit || null,
+          dailyTokenLimit: editingKey.dailyTokenLimit || null,
+          allowedConnectionIds: editingKey.allowedConnectionIds || [],
+        }),
+      });
+      if (res.ok) {
+        const { key } = await res.json();
+        setKeys((current) => current.map((item) => item.id === key.id ? key : item));
+        setEditingKey(null);
+      }
+    } catch (error) {
+      console.log("Error updating key policy:", error);
     }
   };
 
@@ -1024,11 +1064,24 @@ export default function APIPageClient({ machineId }) {
                   <p className="text-xs text-text-muted mt-1">
                     Created {new Date(key.createdAt).toLocaleDateString()}
                   </p>
+                  <p className="text-xs text-text-muted mt-1">
+                    Today: {key.requestCount || 0}{key.dailyRequestLimit ? ` / ${key.dailyRequestLimit}` : ""} requests · {key.tokenCount || 0}{key.dailyTokenLimit ? ` / ${key.dailyTokenLimit}` : ""} tokens
+                  </p>
+                  <p className="text-xs text-text-muted mt-1">
+                    Accounts: {key.allowedConnectionIds?.length ? `${key.allowedConnectionIds.length} allowed` : "All"}
+                  </p>
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEditingKey({ ...key, allowedConnectionIds: [...(key.allowedConnectionIds || [])] })}
+                    className="p-2 hover:bg-primary/10 rounded text-text-muted hover:text-primary"
+                    title="Manage limits and accounts"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">tune</span>
+                  </button>
                   <Toggle
                     size="sm"
                     checked={key.isActive ?? true}
@@ -1068,6 +1121,9 @@ export default function APIPageClient({ machineId }) {
         onClose={() => {
           setShowAddModal(false);
           setNewKeyName("");
+          setNewDailyRequestLimit("");
+          setNewDailyTokenLimit("");
+          setNewAllowedConnectionIds([]);
         }}
       >
         <div className="flex flex-col gap-4">
@@ -1077,6 +1133,38 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="Production Key"
           />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Daily request limit"
+              type="number"
+              min="1"
+              value={newDailyRequestLimit}
+              onChange={(e) => setNewDailyRequestLimit(e.target.value)}
+              placeholder="Unlimited"
+            />
+            <Input
+              label="Daily token limit"
+              type="number"
+              min="1"
+              value={newDailyTokenLimit}
+              onChange={(e) => setNewDailyTokenLimit(e.target.value)}
+              placeholder="Unlimited"
+            />
+          </div>
+          <div>
+            <p className="text-sm font-medium mb-1">Allowed provider accounts</p>
+            <p className="text-xs text-text-muted mb-2">Select none to allow all accounts.</p>
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-border p-2 flex flex-col gap-1">
+              {connections.map((connection) => (
+                <label key={connection.id} className="flex items-center gap-2 p-2 rounded hover:bg-black/5 dark:hover:bg-white/5 text-sm">
+                  <input type="checkbox" checked={newAllowedConnectionIds.includes(connection.id)} onChange={() => toggleAllowedConnection(connection.id, newAllowedConnectionIds, setNewAllowedConnectionIds)} />
+                  <span className="font-medium">{connection.name}</span>
+                  <span className="text-xs text-text-muted">{connection.provider}</span>
+                </label>
+              ))}
+              {connections.length === 0 && <p className="text-xs text-text-muted p-2">No provider accounts configured.</p>}
+            </div>
+          </div>
           <div className="flex gap-2">
             <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
               Create
@@ -1085,6 +1173,9 @@ export default function APIPageClient({ machineId }) {
               onClick={() => {
                 setShowAddModal(false);
                 setNewKeyName("");
+                setNewDailyRequestLimit("");
+                setNewDailyTokenLimit("");
+                setNewAllowedConnectionIds([]);
               }}
               variant="ghost"
               fullWidth
@@ -1093,6 +1184,38 @@ export default function APIPageClient({ machineId }) {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!editingKey}
+        title="Manage API Key"
+        onClose={() => setEditingKey(null)}
+      >
+        {editingKey && (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input label="Daily request limit" type="number" min="1" value={editingKey.dailyRequestLimit || ""} onChange={(e) => setEditingKey({ ...editingKey, dailyRequestLimit: e.target.value })} placeholder="Unlimited" />
+              <Input label="Daily token limit" type="number" min="1" value={editingKey.dailyTokenLimit || ""} onChange={(e) => setEditingKey({ ...editingKey, dailyTokenLimit: e.target.value })} placeholder="Unlimited" />
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Allowed provider accounts</p>
+              <p className="text-xs text-text-muted mb-2">Select none to allow all accounts.</p>
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border p-2 flex flex-col gap-1">
+                {connections.map((connection) => (
+                  <label key={connection.id} className="flex items-center gap-2 p-2 rounded hover:bg-black/5 dark:hover:bg-white/5 text-sm">
+                    <input type="checkbox" checked={editingKey.allowedConnectionIds.includes(connection.id)} onChange={() => toggleAllowedConnection(connection.id, editingKey.allowedConnectionIds, (ids) => setEditingKey({ ...editingKey, allowedConnectionIds: ids }))} />
+                    <span className="font-medium">{connection.name}</span>
+                    <span className="text-xs text-text-muted">{connection.provider}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleUpdateKeyPolicy} fullWidth>Save</Button>
+              <Button onClick={() => setEditingKey(null)} variant="ghost" fullWidth>Cancel</Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Created Key Modal */}

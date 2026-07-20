@@ -288,6 +288,18 @@ export async function saveRequestUsage(entry) {
         ]
       );
 
+      if (entry.apiKey) {
+        const today = new Date().toISOString().slice(0, 10);
+        db.run(
+          `UPDATE apiKeys SET
+             tokenCount = CASE WHEN quotaDate = ? THEN COALESCE(tokenCount, 0) + ? ELSE ? END,
+             requestCount = CASE WHEN quotaDate = ? THEN COALESCE(requestCount, 0) ELSE 0 END,
+             quotaDate = ?
+           WHERE key = ?`,
+          [today, promptTokens + completionTokens, promptTokens + completionTokens, today, today, entry.apiKey]
+        );
+      }
+
       const dateKey = getLocalDateKey(entry.timestamp);
       const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
       const day = row ? parseJson(row.data, {}) : {

@@ -21,7 +21,7 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { isActive } = body;
+    const { isActive, name, dailyRequestLimit, dailyTokenLimit, allowedConnectionIds } = body;
 
     const existing = await getApiKeyById(id);
     if (!existing) {
@@ -30,13 +30,18 @@ export async function PUT(request, { params }) {
 
     const updateData = {};
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (name !== undefined) updateData.name = name;
+    if (dailyRequestLimit !== undefined) updateData.dailyRequestLimit = dailyRequestLimit;
+    if (dailyTokenLimit !== undefined) updateData.dailyTokenLimit = dailyTokenLimit;
+    if (allowedConnectionIds !== undefined) updateData.allowedConnectionIds = allowedConnectionIds;
 
     const updated = await updateApiKey(id, updateData);
 
     return NextResponse.json({ key: updated });
   } catch (error) {
     console.log("Error updating key:", error);
-    return NextResponse.json({ error: "Failed to update key" }, { status: 500 });
+    const status = error.message?.includes("must") ? 400 : 500;
+    return NextResponse.json({ error: status === 400 ? error.message : "Failed to update key" }, { status });
   }
 }
 

@@ -1,4 +1,4 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools, reserveApiKeyRequest } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
@@ -21,6 +21,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     ? excludeConnectionIds
     : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
   const preferredConnectionId = options?.preferredConnectionId || null;
+  const allowedConnectionIds = options?.allowedConnectionIds;
   // Acquire mutex to prevent race conditions
   const currentMutex = selectionMutex;
   let resolveMutex;
@@ -59,8 +60,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       };
     }
 
-    const connections = await getProviderConnections({ provider: providerId, isActive: true });
-    log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
+    const allConnections = await getProviderConnections({ provider: providerId, isActive: true });
+    const connections = allowedConnectionIds?.length
+      ? allConnections.filter((connection) => allowedConnectionIds.includes(connection.id))
+      : allConnections;
+    log.debug("AUTH", `${provider} | permitted connections: ${connections.length}/${allConnections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
     if (connections.length === 0) {
       log.warn("AUTH", `No credentials for ${provider}`);
@@ -316,4 +320,17 @@ export function extractApiKey(request) {
 export async function isValidApiKey(apiKey) {
   if (!apiKey) return false;
   return await validateApiKey(apiKey);
+}
+
+export async function authorizeApiKey(apiKey, requireApiKey) {
+  if (!apiKey) return requireApiKey ? { allowed: false, status: 401, message: "Missing API key" } : { allowed: true, apiKey: null };
+  const reservation = await reserveApiKeyRequest(apiKey);
+  if (reservation.reason === "invalid") {
+    return requireApiKey ? { allowed: false, status: 401, message: "Invalid API key" } : { allowed: true, apiKey: null };
+  }
+  if (!reservation.allowed) {
+    const type = reservation.reason === "tokens" ? "token" : "request";
+    return { allowed: false, status: 429, message: `Daily API key ${type} limit reached` };
+  }
+  return { allowed: true, apiKey: reservation.apiKey };
 }
