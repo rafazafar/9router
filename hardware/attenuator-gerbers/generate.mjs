@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const outDir = path.resolve("hardware/attenuator-gerbers/build");
+fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 
 const boardWidth = 80;
@@ -47,34 +48,41 @@ const groundTestPoints = [
   inputGround,
   ...rows.map((y) => ({ x: 76, y })),
 ];
-const seriesPads = rows.flatMap((y) => [
-  { x: 28, y },
-  { x: 43, y },
-]);
-const shuntPads = rows.flatMap((y) => [
-  { x: 53, y },
-  { x: 53, y: y + 15 },
-]);
-const resistorPads = [...seriesPads, ...shuntPads];
+const seriesResistors = rows.map((y, index) => ({
+  designator: `R${index + 1}`,
+  center: { x: 36, y },
+  pads: [{ x: 35, y }, { x: 37, y }],
+  rotation: 0,
+}));
+const shuntResistors = rows.map((y, index) => ({
+  designator: `R${index + 5}`,
+  center: { x: 53, y: y + 1 },
+  pads: [{ x: 53, y }, { x: 53, y: y + 2 }],
+  rotation: 90,
+}));
 
-function addAllCopperPads(lines) {
+function addTestPointPads(lines) {
   signalTestPoints.forEach((point) => flash(lines, 11, point));
   groundTestPoints.forEach((point) => flash(lines, 12, point));
-  resistorPads.forEach((point) => flash(lines, 13, point));
 }
 
 const frontCopper = header("4-channel attenuator front copper", [
   "%ADD10C,0.500000*%",
   "%ADD11R,3.800000X3.800000*%",
   "%ADD12C,3.800000*%",
-  "%ADD13C,2.200000*%",
+  "%ADD13R,1.200000X1.400000*%",
+  "%ADD14R,1.400000X1.200000*%",
 ]);
-addAllCopperPads(frontCopper);
+addTestPointPads(frontCopper);
+seriesResistors.flatMap(({ pads }) => pads).forEach((point) => flash(frontCopper, 13, point));
+shuntResistors.flatMap(({ pads }) => pads).forEach((point) => flash(frontCopper, 14, point));
 line(frontCopper, 10, inputSignal, { x: 20, y: inputSignal.y });
 line(frontCopper, 10, { x: 20, y: rows[0] }, { x: 20, y: rows.at(-1) });
 for (const y of rows) {
-  line(frontCopper, 10, { x: 20, y }, { x: 28, y });
-  line(frontCopper, 10, { x: 43, y }, { x: 68, y });
+  line(frontCopper, 10, { x: 20, y }, { x: 35, y });
+  line(frontCopper, 10, { x: 37, y }, { x: 68, y });
+  line(frontCopper, 10, { x: 53, y: y + 2 }, { x: 76, y: y + 2 });
+  line(frontCopper, 10, { x: 76, y: y + 2 }, { x: 76, y });
 }
 frontCopper.push("M02*");
 
@@ -82,26 +90,46 @@ const backCopper = header("4-channel attenuator back copper", [
   "%ADD10C,0.800000*%",
   "%ADD11R,3.800000X3.800000*%",
   "%ADD12C,3.800000*%",
-  "%ADD13C,2.200000*%",
 ]);
-addAllCopperPads(backCopper);
+addTestPointPads(backCopper);
 line(backCopper, 10, inputGround, { x: 15, y: 76 });
 line(backCopper, 10, { x: 15, y: 76 }, { x: 76, y: 76 });
 line(backCopper, 10, { x: 76, y: rows[0] }, { x: 76, y: 76 });
-for (const y of rows) {
-  line(backCopper, 10, { x: 53, y: y + 15 }, { x: 76, y: y + 15 });
-}
 backCopper.push("M02*");
 
-function maskLayer(title) {
-  const lines = header(title, [
+function frontMaskLayer() {
+  const lines = header("4-channel attenuator front solder mask", [
     "%ADD10R,4.200000X4.200000*%",
     "%ADD11C,4.200000*%",
-    "%ADD12C,2.600000*%",
+    "%ADD12R,1.400000X1.600000*%",
+    "%ADD13R,1.600000X1.400000*%",
   ]);
   signalTestPoints.forEach((point) => flash(lines, 10, point));
   groundTestPoints.forEach((point) => flash(lines, 11, point));
-  resistorPads.forEach((point) => flash(lines, 12, point));
+  seriesResistors.flatMap(({ pads }) => pads).forEach((point) => flash(lines, 12, point));
+  shuntResistors.flatMap(({ pads }) => pads).forEach((point) => flash(lines, 13, point));
+  lines.push("M02*");
+  return lines;
+}
+
+function backMaskLayer() {
+  const lines = header("4-channel attenuator back solder mask", [
+    "%ADD10R,4.200000X4.200000*%",
+    "%ADD11C,4.200000*%",
+  ]);
+  signalTestPoints.forEach((point) => flash(lines, 10, point));
+  groundTestPoints.forEach((point) => flash(lines, 11, point));
+  lines.push("M02*");
+  return lines;
+}
+
+function topPasteLayer() {
+  const lines = header("4-channel attenuator top solder paste", [
+    "%ADD10R,1.100000X1.300000*%",
+    "%ADD11R,1.300000X1.100000*%",
+  ]);
+  seriesResistors.flatMap(({ pads }) => pads).forEach((point) => flash(lines, 10, point));
+  shuntResistors.flatMap(({ pads }) => pads).forEach((point) => flash(lines, 11, point));
   lines.push("M02*");
   return lines;
 }
@@ -163,12 +191,12 @@ text(silk, "G", 14, 31.5);
 rows.forEach((y, index) => {
   rectangle(silk, 10, 65.6, y - 2.4, 70.4, y + 2.4);
   rectangle(silk, 10, 73.6, y - 2.4, 78.4, y + 2.4);
-  rectangle(silk, 10, 32, y - 1.6, 39, y + 1.6);
-  rectangle(silk, 10, 51.4, y + 4, 54.6, y + 11);
+  rectangle(silk, 10, 34.5, y - 1.1, 37.5, y + 1.1);
+  rectangle(silk, 10, 51.9, y - 0.5, 54.1, y + 2.5);
   text(silk, `OUT${index + 1}`, 58, y - 5.5, 0.55);
   text(silk, "G", 74.5, y - 5.5, 0.55);
   text(silk, `R${index + 1}`, 34, y - 4.5, 0.5);
-  text(silk, `R${index + 5}`, 55.5, y + 5, 0.5);
+  text(silk, `R${index + 5}`, 55.5, y + 0.2, 0.5);
 });
 text(silk, "4CH 1001:1 ATTENUATOR", 10, 1.5, 0.55);
 silk.push("M02*");
@@ -185,7 +213,6 @@ const drill = [
   "FMAT,2",
   "METRIC,TZ",
   "T1C1.600",
-  "T2C0.900",
   "%",
   "G90",
   "G05",
@@ -193,26 +220,63 @@ const drill = [
   ...[...signalTestPoints, ...groundTestPoints].map(
     (point) => `X${point.x.toFixed(3)}Y${point.y.toFixed(3)}`,
   ),
-  "T2",
-  ...resistorPads.map(
-    (point) => `X${point.x.toFixed(3)}Y${point.y.toFixed(3)}`,
-  ),
   "T0",
   "M30",
 ];
 
 const files = {
-  "attenuator-F_Cu.gbr": frontCopper,
-  "attenuator-B_Cu.gbr": backCopper,
-  "attenuator-F_Mask.gbr": maskLayer("4-channel attenuator front solder mask"),
-  "attenuator-B_Mask.gbr": maskLayer("4-channel attenuator back solder mask"),
-  "attenuator-F_Silkscreen.gbr": silk,
-  "attenuator-Edge_Cuts.gbr": edges,
-  "attenuator-PTH.drl": drill,
+  "attenuator.GTL": frontCopper,
+  "attenuator.GBL": backCopper,
+  "attenuator.GTS": frontMaskLayer(),
+  "attenuator.GBS": backMaskLayer(),
+  "attenuator.GTP": topPasteLayer(),
+  "attenuator.GTO": silk,
+  "attenuator.GKO": edges,
+  "attenuator.XLN": drill,
 };
 
 for (const [name, lines] of Object.entries(files)) {
   fs.writeFileSync(path.join(outDir, name), `${lines.join("\n")}\n`);
 }
 
-console.log(`Generated ${Object.keys(files).length} fabrication files in ${outDir}`);
+const assemblyDir = path.resolve("hardware/attenuator-gerbers/assembly");
+fs.rmSync(assemblyDir, { recursive: true, force: true });
+fs.mkdirSync(assemblyDir, { recursive: true });
+
+const bom = [
+  "Comment,Designator,Footprint,LCSC Part #,Manufacturer,Manufacturer Part Number",
+  '100k ohm 0.1% 25ppm thin-film,"R1,R2,R3,R4",0805,C122537,YAGEO,RT0805BRD07100KL',
+  '100 ohm 0.1% 25ppm thin-film,"R5,R6,R7,R8",0805,C515718,Viking,ARG05BTC1000',
+  'Red multipurpose THM test point,"TP1,TP3,TP5,TP7,TP9",Keystone_5010,C2906765,Keystone,5010',
+  'Black multipurpose THM test point,"TP2,TP4,TP6,TP8,TP10",Keystone_5011,C238127,Keystone,5011',
+];
+
+const placements = [
+  { designator: "TP1", point: inputSignal, rotation: 0 },
+  { designator: "TP2", point: inputGround, rotation: 0 },
+  ...rows.flatMap((y, index) => [
+    { designator: `TP${index * 2 + 3}`, point: { x: 68, y }, rotation: 0 },
+    { designator: `TP${index * 2 + 4}`, point: { x: 76, y }, rotation: 0 },
+  ]),
+  ...seriesResistors.map(({ designator, center, rotation }) => ({
+    designator,
+    point: center,
+    rotation,
+  })),
+  ...shuntResistors.map(({ designator, center, rotation }) => ({
+    designator,
+    point: center,
+    rotation,
+  })),
+];
+const cpl = [
+  "Designator,Mid X,Mid Y,Layer,Rotation",
+  ...placements.map(({ designator, point, rotation }) =>
+    `${designator},${point.x.toFixed(3)}mm,${point.y.toFixed(3)}mm,Top,${rotation}`,
+  ),
+];
+
+fs.writeFileSync(path.join(assemblyDir, "attenuator-bom.csv"), `${bom.join("\n")}\n`);
+fs.writeFileSync(path.join(assemblyDir, "attenuator-cpl.csv"), `${cpl.join("\n")}\n`);
+
+console.log(`Generated ${Object.keys(files).length} fabrication files plus BOM and CPL`);

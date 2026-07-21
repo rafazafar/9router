@@ -1,0 +1,5 @@
+Comment,Designator,Footprint,LCSC Part #,Manufacturer,Manufacturer Part Number
+100k ohm 0.1% 25ppm thin-film,"R1,R2,R3,R4",0805,C122537,YAGEO,RT0805BRD07100KL
+100 ohm 0.1% 25ppm thin-film,"R5,R6,R7,R8",0805,C515718,Viking,ARG05BTC1000
+Red multipurpose THM test point,"TP1,TP3,TP5,TP7,TP9",Keystone_5010,C2906765,Keystone,5010
+Black multipurpose THM test point,"TP2,TP4,TP6,TP8,TP10",Keystone_5011,C238127,Keystone,5011
