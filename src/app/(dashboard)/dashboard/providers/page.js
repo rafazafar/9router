@@ -439,9 +439,22 @@ export default function ProvidersPage() {
               key={key}
               providerId={key}
               provider={info}
-              stats={getProviderStats(key, "oauth")}
+              stats={getProviderStats(
+                key,
+                info.authModes?.includes("apikey")
+                  ? ["oauth", "apikey"]
+                  : "oauth",
+              )}
               authType="oauth"
-              onToggle={(active) => handleToggleProvider(key, "oauth", active)}
+              onToggle={(active) =>
+                handleToggleProvider(
+                  key,
+                  info.authModes?.includes("apikey")
+                    ? ["oauth", "apikey"]
+                    : "oauth",
+                  active,
+                )
+              }
             />
           ))}
         </div>

@@ -580,6 +580,22 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const res = await fetchWithConnectionProxy("https://openrouter.ai/api/v1/auth/key", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
+      case "codebuddy-cn": {
+        const usageUrl = PROVIDERS["codebuddy-cn"]?.usage?.url;
+        const res = await fetchWithConnectionProxy(usageUrl, {
+          method: "POST",
+          headers: {
+            ...(PROVIDERS["codebuddy-cn"]?.headers || {}),
+            Authorization: `Bearer ${connection.apiKey}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: "{}",
+        }, effectiveProxy);
+        const data = await res.json().catch(() => null);
+        const valid = res.ok && data?.code === 0;
+        return { valid, error: valid ? null : (data?.msg || "Invalid API key") };
+      }
       case "glm": {
         const res = await fetchWithConnectionProxy("https://api.z.ai/api/anthropic/v1/messages", {
           method: "POST",
