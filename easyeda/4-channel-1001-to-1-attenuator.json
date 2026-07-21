@@ -1,0 +1,67 @@
+{
+  "head": {
+    "docType": "1",
+    "editorVersion": "6.5.51",
+    "newgId": true,
+    "c_para": {
+      "Prefix Start": "1",
+      "Title": "4-Channel Passive 1001:1 Attenuator"
+    },
+    "c_spiceCmd": null
+  },
+  "canvas": "CA~1000~700~#FFFFFF~yes~#CCCCCC~10~1000~700~line~10~pixel~5~0~0",
+  "shape": [
+    "LIB~135~85~package`HDR-M-2.54_1X2`nameAlias`Value`Contributor`LCEDA_Lib`spicePre`J`spiceSymbolName`HDR-M-2.54_1x2`~180~0~gge100~70aa5812f21f4991bf427395d51849f4~a9aa2b14f188405792fa87ac344499a4~0~~yes~yes#@$T~N~108.7~73~0~#000080~Arial~~~~~comment~INPUT~1~start~gge101~0#@$T~P~121.1~58~0~#000080~Arial~~~~~comment~J1~1~start~gge102~0#@$R~120~70~2~2~20~30~#880000~1~0~none~gge103~0#@$P~show~0~1~150~90~0~gge104~0^^150~90^^M 150 90 h -10~#000000^^1~138~93~0~1~end~~~#000000^^0~140~89~0~1~start~~~#000000^^0~143~90^^0~M 140 87 L 137 90 L 140 93#@$P~show~0~2~150~100~0~gge105~0^^150~100^^M 150 100 h -10~#000000^^1~138~103~0~2~end~~~#000000^^0~140~99~0~2~start~~~#000000^^0~143~100^^0~M 140 97 L 137 100 L 140 103",
+    "N~150~90~0~#000080~IN~gge106~start~153~90~Times New Roman~7pt",
+    "N~150~100~0~#000080~GND~gge107~start~153~100~Times New Roman~7pt",
+
+    "LIB~400~180~package`R0805`nameAlias`Value(Ω)`Contributor`LCEDA_Lib`spicePre`R`spiceSymbolName`R_0805_EU`~0~0~gge110~b60f399a7a7e41848b2be1eb49c79141~ed9eb2faffb34286820a54a14e9e9e24~0~~yes~yes#@$T~N~393.2~172~0~#000080~Arial~~~~~comment~100k~1~start~gge111~0#@$T~P~393.9~162.9~0~#000080~Arial~~~~~comment~R1~1~start~gge112~0#@$R~390~175~~~20~10~#A00000~1~0~none~gge113~0#@$P~show~0~2~420~180~0~gge114~0^^420~180^^M 410 180 h 10~#800^^0~406~180~0~2~end~~~#800^^0~414~176~0~2~start~~~#800^^0~433~180^^0~M 430 177 L 427 180 L 430 183#@$P~show~0~1~380~180~180~gge115~0^^380~180^^M 390 180 h -10~#800^^0~394~180~0~1~start~~~#800^^0~386~176~0~1~end~~~#800^^0~367~180^^0~M 370 183 L 373 180 L 370 177",
+    "N~380~180~0~#000080~IN~gge116~end~377~180~Times New Roman~7pt",
+    "LIB~560~200~package`R0805`nameAlias`Value(Ω)`Contributor`LCEDA_Lib`spicePre`R`spiceSymbolName`R_0805_EU`~90~0~gge120~b60f399a7a7e41848b2be1eb49c79141~ed9eb2faffb34286820a54a14e9e9e24~0~~yes~yes#@$T~N~535~210~0~#000080~Arial~~~~~comment~100R~1~start~gge121~0#@$T~P~535.7~200.9~0~#000080~Arial~~~~~comment~R5~1~start~gge122~0#@$R~555~190~~~10~20~#A00000~1~0~none~gge123~0#@$P~show~0~2~560~180~90~gge124~0^^560~180^^M 560 190 v -10~#800^^0~560~194~270~2~end~~~#800^^0~556~186~270~2~start~~~#800^^0~560~167^^0~M 557 170 L 560 173 L 563 170#@$P~show~0~1~560~220~270~gge125~0^^560~220^^M 560 210 v 10~#800^^0~560~206~270~1~start~~~#800^^0~556~214~270~1~end~~~#800^^0~560~233^^0~M 563 230 L 560 227 L 557 230",
+    "N~560~220~0~#000080~GND~gge126~start~563~220~Times New Roman~7pt",
+    "W~420 180 790 180~#008800~1~0~none~gge127~0",
+    "J~560~180~2.5~#CC0000~gge128",
+    "N~700~180~0~#000080~OUT1~gge129~start~703~180~Times New Roman~7pt",
+    "LIB~810~185~package`HDR-M-2.54_1X2`nameAlias`Value`Contributor`LCEDA_Lib`spicePre`J`spiceSymbolName`HDR-M-2.54_1x2`~0~0~gge130~70aa5812f21f4991bf427395d51849f4~a9aa2b14f188405792fa87ac344499a4~0~~yes~yes#@$T~N~803~215~0~#000080~Arial~~~~~comment~OUTPUT_1~1~start~gge131~0#@$T~P~803~166~0~#000080~Arial~~~~~comment~J2~1~start~gge132~0#@$R~800~170~2~2~20~30~#880000~1~0~none~gge133~0#@$P~show~0~1~790~180~180~gge134~0^^790~180^^M 790 180 h 10~#000000^^1~803~182~0~1~start~~~#000000^^0~799~179~0~1~end~~~#000000^^0~797~180^^0~M 800 177 L 803 180 L 800 183#@$P~show~0~2~790~190~180~gge135~0^^790~190^^M 790 190 h 10~#000000^^1~803~192~0~2~start~~~#000000^^0~799~189~0~2~end~~~#000000^^0~797~190^^0~M 800 187 L 803 190 L 800 193",
+    "N~790~190~0~#000080~GND~gge136~end~787~190~Times New Roman~7pt",
+
+    "LIB~400~300~package`R0805`nameAlias`Value(Ω)`Contributor`LCEDA_Lib`spicePre`R`spiceSymbolName`R_0805_EU`~0~0~gge210~b60f399a7a7e41848b2be1eb49c79141~ed9eb2faffb34286820a54a14e9e9e24~0~~yes~yes#@$T~N~393.2~292~0~#000080~Arial~~~~~comment~100k~1~start~gge211~0#@$T~P~393.9~282.9~0~#000080~Arial~~~~~comment~R2~1~start~gge212~0#@$R~390~295~~~20~10~#A00000~1~0~none~gge213~0#@$P~show~0~2~420~300~0~gge214~0^^420~300^^M 410 300 h 10~#800^^0~406~300~0~2~end~~~#800^^0~414~296~0~2~start~~~#800^^0~433~300^^0~M 430 297 L 427 300 L 430 303#@$P~show~0~1~380~300~180~gge215~0^^380~300^^M 390 300 h -10~#800^^0~394~300~0~1~start~~~#800^^0~386~296~0~1~end~~~#800^^0~367~300^^0~M 370 303 L 373 300 L 370 297",
+    "N~380~300~0~#000080~IN~gge216~end~377~300~Times New Roman~7pt",
+    "LIB~560~320~package`R0805`nameAlias`Value(Ω)`Contributor`LCEDA_Lib`spicePre`R`spiceSymbolName`R_0805_EU`~90~0~gge220~b60f399a7a7e41848b2be1eb49c79141~ed9eb2faffb34286820a54a14e9e9e24~0~~yes~yes#@$T~N~535~330~0~#000080~Arial~~~~~comment~100R~1~start~gge221~0#@$T~P~535.7~320.9~0~#000080~Arial~~~~~comment~R6~1~start~gge222~0#@$R~555~310~~~10~20~#A00000~1~0~none~gge223~0#@$P~show~0~2~560~300~90~gge224~0^^560~300^^M 560 310 v -10~#800^^0~560~314~270~2~end~~~#800^^0~556~306~270~2~start~~~#800^^0~560~287^^0~M 557 290 L 560 293 L 563 290#@$P~show~0~1~560~340~270~gge225~0^^560~340^^M 560 330 v 10~#800^^0~560~326~270~1~start~~~#800^^0~556~334~270~1~end~~~#800^^0~560~353^^0~M 563 350 L 560 347 L 557 350",
+    "N~560~340~0~#000080~GND~gge226~start~563~340~Times New Roman~7pt",
+    "W~420 300 790 300~#008800~1~0~none~gge227~0",
+    "J~560~300~2.5~#CC0000~gge228",
+    "N~700~300~0~#000080~OUT2~gge229~start~703~300~Times New Roman~7pt",
+    "LIB~810~305~package`HDR-M-2.54_1X2`nameAlias`Value`Contributor`LCEDA_Lib`spicePre`J`spiceSymbolName`HDR-M-2.54_1x2`~0~0~gge230~70aa5812f21f4991bf427395d51849f4~a9aa2b14f188405792fa87ac344499a4~0~~yes~yes#@$T~N~803~335~0~#000080~Arial~~~~~comment~OUTPUT_2~1~start~gge231~0#@$T~P~803~286~0~#000080~Arial~~~~~comment~J3~1~start~gge232~0#@$R~800~290~2~2~20~30~#880000~1~0~none~gge233~0#@$P~show~0~1~790~300~180~gge234~0^^790~300^^M 790 300 h 10~#000000^^1~803~302~0~1~start~~~#000000^^0~799~299~0~1~end~~~#000000^^0~797~300^^0~M 800 297 L 803 300 L 800 303#@$P~show~0~2~790~310~180~gge235~0^^790~310^^M 790 310 h 10~#000000^^1~803~312~0~2~start~~~#000000^^0~799~309~0~2~end~~~#000000^^0~797~310^^0~M 800 307 L 803 310 L 800 313",
+    "N~790~310~0~#000080~GND~gge236~end~787~310~Times New Roman~7pt",
+
+    "LIB~400~420~package`R0805`nameAlias`Value(Ω)`Contributor`LCEDA_Lib`spicePre`R`spiceSymbolName`R_0805_EU`~0~0~gge310~b60f399a7a7e41848b2be1eb49c79141~ed9eb2faffb34286820a54a14e9e9e24~0~~yes~yes#@$T~N~393.2~412~0~#000080~Arial~~~~~comment~100k~1~start~gge311~0#@$T~P~393.9~402.9~0~#000080~Arial~~~~~comment~R3~1~start~gge312~0#@$R~390~415~~~20~10~#A00000~1~0~none~gge313~0#@$P~show~0~2~420~420~0~gge314~0^^420~420^^M 410 420 h 10~#800^^0~406~420~0~2~end~~~#800^^0~414~416~0~2~start~~~#800^^0~433~420^^0~M 430 417 L 427 420 L 430 423#@$P~show~0~1~380~420~180~gge315~0^^380~420^^M 390 420 h -10~#800^^0~394~420~0~1~start~~~#800^^0~386~416~0~1~end~~~#800^^0~367~420^^0~M 370 423 L 373 420 L 370 417",
+    "N~380~420~0~#000080~IN~gge316~end~377~420~Times New Roman~7pt",
+    "LIB~560~440~package`R0805`nameAlias`Value(Ω)`Contributor`LCEDA_Lib`spicePre`R`spiceSymbolName`R_0805_EU`~90~0~gge320~b60f399a7a7e41848b2be1eb49c79141~ed9eb2faffb34286820a54a14e9e9e24~0~~yes~yes#@$T~N~535~450~0~#000080~Arial~~~~~comment~100R~1~start~gge321~0#@$T~P~535.7~440.9~0~#000080~Arial~~~~~comment~R7~1~start~gge322~0#@$R~555~430~~~10~20~#A00000~1~0~none~gge323~0#@$P~show~0~2~560~420~90~gge324~0^^560~420^^M 560 430 v -10~#800^^0~560~434~270~2~end~~~#800^^0~556~426~270~2~start~~~#800^^0~560~407^^0~M 557 410 L 560 413 L 563 410#@$P~show~0~1~560~460~270~gge325~0^^560~460^^M 560 450 v 10~#800^^0~560~446~270~1~start~~~#800^^0~556~454~270~1~end~~~#800^^0~560~473^^0~M 563 470 L 560 467 L 557 470",
+    "N~560~460~0~#000080~GND~gge326~start~563~460~Times New Roman~7pt",
+    "W~420 420 790 420~#008800~1~0~none~gge327~0",
+    "J~560~420~2.5~#CC0000~gge328",
+    "N~700~420~0~#000080~OUT3~gge329~start~703~420~Times New Roman~7pt",
+    "LIB~810~425~package`HDR-M-2.54_1X2`nameAlias`Value`Contributor`LCEDA_Lib`spicePre`J`spiceSymbolName`HDR-M-2.54_1x2`~0~0~gge330~70aa5812f21f4991bf427395d51849f4~a9aa2b14f188405792fa87ac344499a4~0~~yes~yes#@$T~N~803~455~0~#000080~Arial~~~~~comment~OUTPUT_3~1~start~gge331~0#@$T~P~803~406~0~#000080~Arial~~~~~comment~J4~1~start~gge332~0#@$R~800~410~2~2~20~30~#880000~1~0~none~gge333~0#@$P~show~0~1~790~420~180~gge334~0^^790~420^^M 790 420 h 10~#000000^^1~803~422~0~1~start~~~#000000^^0~799~419~0~1~end~~~#000000^^0~797~420^^0~M 800 417 L 803 420 L 800 423#@$P~show~0~2~790~430~180~gge335~0^^790~430^^M 790 430 h 10~#000000^^1~803~432~0~2~start~~~#000000^^0~799~429~0~2~end~~~#000000^^0~797~430^^0~M 800 427 L 803 430 L 800 433",
+    "N~790~430~0~#000080~GND~gge336~end~787~430~Times New Roman~7pt",
+
+    "LIB~400~540~package`R0805`nameAlias`Value(Ω)`Contributor`LCEDA_Lib`spicePre`R`spiceSymbolName`R_0805_EU`~0~0~gge410~b60f399a7a7e41848b2be1eb49c79141~ed9eb2faffb34286820a54a14e9e9e24~0~~yes~yes#@$T~N~393.2~532~0~#000080~Arial~~~~~comment~100k~1~start~gge411~0#@$T~P~393.9~522.9~0~#000080~Arial~~~~~comment~R4~1~start~gge412~0#@$R~390~535~~~20~10~#A00000~1~0~none~gge413~0#@$P~show~0~2~420~540~0~gge414~0^^420~540^^M 410 540 h 10~#800^^0~406~540~0~2~end~~~#800^^0~414~536~0~2~start~~~#800^^0~433~540^^0~M 430 537 L 427 540 L 430 543#@$P~show~0~1~380~540~180~gge415~0^^380~540^^M 390 540 h -10~#800^^0~394~540~0~1~start~~~#800^^0~386~536~0~1~end~~~#800^^0~367~540^^0~M 370 543 L 373 540 L 370 537",
+    "N~380~540~0~#000080~IN~gge416~end~377~540~Times New Roman~7pt",
+    "LIB~560~560~package`R0805`nameAlias`Value(Ω)`Contributor`LCEDA_Lib`spicePre`R`spiceSymbolName`R_0805_EU`~90~0~gge420~b60f399a7a7e41848b2be1eb49c79141~ed9eb2faffb34286820a54a14e9e9e24~0~~yes~yes#@$T~N~535~570~0~#000080~Arial~~~~~comment~100R~1~start~gge421~0#@$T~P~535.7~560.9~0~#000080~Arial~~~~~comment~R8~1~start~gge422~0#@$R~555~550~~~10~20~#A00000~1~0~none~gge423~0#@$P~show~0~2~560~540~90~gge424~0^^560~540^^M 560 550 v -10~#800^^0~560~554~270~2~end~~~#800^^0~556~546~270~2~start~~~#800^^0~560~527^^0~M 557 530 L 560 533 L 563 530#@$P~show~0~1~560~580~270~gge425~0^^560~580^^M 560 570 v 10~#800^^0~560~566~270~1~start~~~#800^^0~556~574~270~1~end~~~#800^^0~560~593^^0~M 563 590 L 560 587 L 557 590",
+    "N~560~580~0~#000080~GND~gge426~start~563~580~Times New Roman~7pt",
+    "W~420 540 790 540~#008800~1~0~none~gge427~0",
+    "J~560~540~2.5~#CC0000~gge428",
+    "N~700~540~0~#000080~OUT4~gge429~start~703~540~Times New Roman~7pt",
+    "LIB~810~545~package`HDR-M-2.54_1X2`nameAlias`Value`Contributor`LCEDA_Lib`spicePre`J`spiceSymbolName`HDR-M-2.54_1x2`~0~0~gge430~70aa5812f21f4991bf427395d51849f4~a9aa2b14f188405792fa87ac344499a4~0~~yes~yes#@$T~N~803~575~0~#000080~Arial~~~~~comment~OUTPUT_4~1~start~gge431~0#@$T~P~803~526~0~#000080~Arial~~~~~comment~J5~1~start~gge432~0#@$R~800~530~2~2~20~30~#880000~1~0~none~gge433~0#@$P~show~0~1~790~540~180~gge434~0^^790~540^^M 790 540 h 10~#000000^^1~803~542~0~1~start~~~#000000^^0~799~539~0~1~end~~~#000000^^0~797~540^^0~M 800 537 L 803 540 L 800 543#@$P~show~0~2~790~550~180~gge435~0^^790~550^^M 790 550 h 10~#000000^^1~803~552~0~2~start~~~#000000^^0~799~549~0~2~end~~~#000000^^0~797~550^^0~M 800 547 L 803 550 L 800 553",
+    "N~790~550~0~#000080~GND~gge436~end~787~550~Times New Roman~7pt",
+
+    "T~L~70~625~0~#000080~Arial~~~~~comment~Four independent 100k / 100R dividers; nominal ratio 1001:1. IN and GND are shared.~1~start~gge500~0"
+  ],
+  "BBox": {
+    "x": 65,
+    "y": 50,
+    "width": 780,
+    "height": 600
+  },
+  "colors": {}
+}
