@@ -1,15 +1,29 @@
 import { NextResponse } from "next/server";
-import { getCustomModels, addCustomModel, deleteCustomModel } from "@/models";
-import { authorizationErrorResponse, requireAdmin } from "@/lib/auth/authorization";
+import { getCustomModels, getAccessibleProviderConnections, addCustomModel, deleteCustomModel } from "@/models";
+import { getProviderAlias } from "@/shared/constants/providers";
+import { authorizationErrorResponse, requireAdmin, requireUser } from "@/lib/auth/authorization";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/models/custom - List all custom models
 export async function GET(request) {
   try {
-    await requireAdmin(request);
+    const principal = await requireUser(request);
     const models = await getCustomModels();
-    return NextResponse.json({ models });
+    if (principal.role === "admin") return NextResponse.json({ models });
+
+    const connections = await getAccessibleProviderConnections(principal);
+    const providerAliases = new Set();
+    for (const connection of connections) {
+      providerAliases.add(connection.provider);
+      providerAliases.add(getProviderAlias(connection.provider));
+      const prefix = connection.providerSpecificData?.prefix;
+      if (typeof prefix === "string" && prefix.trim()) providerAliases.add(prefix.trim());
+    }
+
+    return NextResponse.json({
+      models: models.filter((model) => providerAliases.has(model.providerAlias)),
+    });
   } catch (error) {
     const authResponse = authorizationErrorResponse(error);
     if (authResponse) return authResponse;

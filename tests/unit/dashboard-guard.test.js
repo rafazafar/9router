@@ -236,6 +236,15 @@ describe("dashboard guard role boundaries", () => {
     expect(response).toBe(mocks.nextResponse);
   });
 
+  it("allows a member session through to scoped custom-model reads", async () => {
+    mocks.getDashboardAuthSession.mockResolvedValue({ sub: "member", sessionVersion: 3 });
+    mocks.getUserById.mockResolvedValue({ id: "member", role: "member", status: "active", sessionVersion: 3 });
+
+    const response = await proxy(request("/api/models/custom", { host: "localhost:20128" }, "member-token"));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
   it("allows members to use scoped CLI Tools UI but not host-management APIs", async () => {
     mocks.getDashboardAuthSession.mockResolvedValue({ sub: "member", sessionVersion: 3 });
     mocks.getUserById.mockResolvedValue({ id: "member", role: "member", status: "active", sessionVersion: 3 });

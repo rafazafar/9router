@@ -51,7 +51,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/api/cloud", "/api/pricing", "/api/cli-tools", "/api/mcp", "/api/tunnel",
   "/api/translator", "/api/database", "/api/oauth/cursor/auto-import", "/api/oauth/kiro/auto-import",
   "/api/members",
-  "/api/models/alias", "/api/models/custom", "/api/models/disabled", "/api/models/test",
+  "/api/models/alias", "/api/models/disabled", "/api/models/test",
   "/api/headroom", "/api/pxpipe", "/api/shutdown", "/api/version", "/api/media-providers",
   "/api/auth/reset-password",
   "/api/providers/suggested-models",

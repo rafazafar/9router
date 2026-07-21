@@ -89,7 +89,6 @@ describe("multi-user provider routes", () => {
   it("rejects members and spoofed CLI headers on global and host-control handlers", async () => {
     const memberRequest = await requestFor(alice, "http://localhost/api/combos");
     const combos = await import("@/app/api/combos/route.js");
-    const customModels = await import("@/app/api/models/custom/route.js");
     const disabledModels = await import("@/app/api/models/disabled/route.js");
     const pricing = await import("@/app/api/pricing/route.js");
     const translator = await import("@/app/api/translator/load/route.js");
@@ -99,7 +98,6 @@ describe("multi-user provider routes", () => {
     const database = await import("@/app/api/settings/database/route.js");
 
     expect((await combos.GET(memberRequest)).status).toBe(403);
-    expect((await customModels.GET(await requestFor(alice, "http://localhost/api/models/custom"))).status).toBe(403);
     expect((await disabledModels.GET(await requestFor(alice, "http://localhost/api/models/disabled"))).status).toBe(403);
     expect((await pricing.GET(await requestFor(alice, "http://localhost/api/pricing"))).status).toBe(403);
     expect((await translator.GET(await requestFor(alice, "http://localhost/api/translator/load?file=1_req_client.json"))).status).toBe(403);
@@ -111,6 +109,27 @@ describe("multi-user provider routes", () => {
       headers: { "x-9r-cli-token": "attacker-controlled" },
     });
     expect((await database.GET(spoofedCli)).status).toBe(401);
+  });
+
+  it("shares custom models only for providers accessible to a member", async () => {
+    await db.addCustomModel({ providerAlias: "anthropic", id: "claude-custom", type: "llm" });
+    await db.addCustomModel({ providerAlias: "openai", id: "gpt-custom", type: "llm" });
+    await db.addCustomModel({ providerAlias: "google", id: "gemini-private", type: "llm" });
+    const customModels = await import("@/app/api/models/custom/route.js");
+
+    const response = await customModels.GET(await requestFor(alice, "http://localhost/api/models/custom"));
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).models.map((model) => `${model.providerAlias}/${model.id}`).sort()).toEqual([
+      "anthropic/claude-custom",
+      "openai/gpt-custom",
+    ]);
+    expect((await customModels.GET(await requestFor(bob, "http://localhost/api/models/custom"))).json())
+      .resolves.toEqual({ models: [] });
+    expect((await customModels.POST(await requestFor(alice, "http://localhost/api/models/custom", {
+      method: "POST",
+      body: JSON.stringify({ providerAlias: "anthropic", id: "forbidden" }),
+    }))).status).toBe(403);
   });
 
   it("accepts a valid machine CLI token through route-level authorization", async () => {
