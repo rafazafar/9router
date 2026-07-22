@@ -143,7 +143,7 @@ export async function GET(request) {
   }
   if (resolvedId !== id) {
     info.id = id;
-    info["x-9router-target"] = resolvedId;
+    info["x-zrouter-target"] = resolvedId;
   }
   return Response.json(info, { headers: { "Access-Control-Allow-Origin": "*" } });
 }

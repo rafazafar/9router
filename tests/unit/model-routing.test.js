@@ -7,7 +7,7 @@ import { validateModelAlias } from "../../open-sse/services/modelAliases.js";
 const originalDataDir = process.env.DATA_DIR;
 
 async function setupDb() {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-model-routing-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "zrouter-model-routing-"));
   process.env.DATA_DIR = tempDir;
   vi.resetModules();
 

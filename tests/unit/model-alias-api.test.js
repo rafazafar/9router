@@ -8,7 +8,7 @@ let tempDir;
 
 describe("model alias API", () => {
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-model-alias-api-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "zrouter-model-alias-api-"));
     process.env.DATA_DIR = tempDir;
     vi.resetModules();
   });
@@ -60,7 +60,7 @@ describe("model alias API", () => {
     const discovered = await buildModelsList(["llm"]);
     expect(discovered).toContainEqual(expect.objectContaining({
       id: "openai/gpt-5.6-sol",
-      "x-9router-target": "cx/gpt-5.6-sol",
+      "x-zrouter-target": "cx/gpt-5.6-sol",
     }));
 
     const modelInfoRoute = await import("@/app/api/v1/models/info/route.js");
@@ -69,7 +69,7 @@ describe("model alias API", () => {
     ));
     await expect(infoResponse.json()).resolves.toMatchObject({
       id: "openai/gpt-5.6-sol",
-      "x-9router-target": "cx/gpt-5.6-sol",
+      "x-zrouter-target": "cx/gpt-5.6-sol",
     });
 
     const updated = await route.PUT(adminRequest("http://localhost/api/models/alias", {
@@ -88,7 +88,7 @@ describe("model alias API", () => {
     await createProviderConnection({ provider: "codex", authType: "oauth", name: "Codex" });
     expect(await buildModelsList(["llm"])).toContainEqual(expect.objectContaining({
       id: "openai/gpt-5.6-sol",
-      "x-9router-target": "cx/gpt-5.6-sol",
+      "x-zrouter-target": "cx/gpt-5.6-sol",
     }));
   });
 });

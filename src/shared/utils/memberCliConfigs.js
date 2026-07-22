@@ -23,21 +23,21 @@ export function buildMemberCliConfigs({ baseUrl, apiKey, model, models = [] }) {
   const openCode = {
     $schema: "https://opencode.ai/config.json",
     provider: {
-      "9router": {
+      "zrouter": {
         npm: "@ai-sdk/openai-compatible",
-        name: "9Router",
+        name: "zRouter",
         options: { baseURL: apiBase, apiKey },
         models: Object.fromEntries(modelCatalog.map((modelId) => [modelId, { name: modelId }])),
       },
     },
-    model: `9router/${model}`,
+    model: `zrouter/${model}`,
   };
   const codexConfig = [
     `model = ${JSON.stringify(model)}`,
-    'model_provider = "9router"',
+    'model_provider = "zrouter"',
     "",
-    "[model_providers.9router]",
-    'name = "9Router"',
+    "[model_providers.zrouter]",
+    'name = "zRouter"',
     `base_url = ${JSON.stringify(apiBase)}`,
     'wire_api = "responses"',
   ].join("\n");

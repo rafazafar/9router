@@ -71,7 +71,7 @@ export async function POST(request) {
       headers,
       body: JSON.stringify({
         slug: projectName,
-        labels: { "custom.kind": "9router-relay" },
+        labels: { "custom.kind": "zrouter-relay" },
         config: {
           install: "deno install",
           runtime: {

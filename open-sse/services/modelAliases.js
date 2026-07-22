@@ -110,7 +110,7 @@ export function appendAliasModelEntries(models, aliases) {
       ...target,
       id: alias,
       owned_by: slash > 0 ? alias.slice(0, slash) : "alias",
-      "x-9router-target": resolved.model,
+      "x-zrouter-target": resolved.model,
     };
     const existingIndex = indexById.get(alias);
     if (existingIndex === undefined) {

@@ -16,7 +16,7 @@ describe("member CLI configs", () => {
     expect(allContent).toContain("sk-member-secret");
     expect(allContent).toContain("openai/gpt-5.6-sol");
     const openCode = JSON.parse(configs.find((config) => config.id === "opencode").files[0].content);
-    expect(Object.keys(openCode.provider["9router"].models)).toEqual([
+    expect(Object.keys(openCode.provider["zrouter"].models)).toEqual([
       "openai/gpt-5.6-sol",
       "anthropic/claude-sonnet-4-5",
       "google/gemini-3-pro",

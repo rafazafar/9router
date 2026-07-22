@@ -22,7 +22,7 @@ async function requestFor(user, url, init = {}) {
 }
 
 beforeEach(async () => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-user-routes-"));
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "zrouter-user-routes-"));
   process.env.DATA_DIR = tempDir;
   delete global._dbAdapter;
   vi.resetModules();

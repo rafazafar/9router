@@ -1,11 +1,11 @@
-// Maps 9Router model capabilities (from getCapabilitiesForModel / /api/models caps)
+// Maps zRouter model capabilities (from getCapabilitiesForModel / /api/models caps)
 // into the per-model metadata schema each CLI tool's config expects.
 //
 // Today only OpenCode's `provider.{id}.models` object accepts per-model metadata;
 // add sibling mappers here if other tools grow similar schemas.
 
 /**
- * 9Router caps -> OpenCode provider.models[id] entry fields.
+ * zRouter caps -> OpenCode provider.models[id] entry fields.
  * Returns an object suitable to spread alongside { name: modelId }.
  * Null/undefined caps yields an undefined-valued shape (JSON.stringify omits undefined).
  */

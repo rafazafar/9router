@@ -20,7 +20,7 @@ export async function GET(request) {
       return {
       name: `models/${modelId}`,
       displayName: modelId,
-      description: `${model.owned_by || "9router"} model`,
+      description: `${model.owned_by || "zrouter"} model`,
       supportedGenerationMethods: ["generateContent", "streamGenerateContent"],
       inputTokenLimit: model.capabilities?.contextWindow || 128000,
       outputTokenLimit: model.capabilities?.maxOutput || 8192,

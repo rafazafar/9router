@@ -96,7 +96,7 @@ const UPSTREAM_CONNECTION_RE = /[-_][0-9a-f]{8,}$/i;
 const LLM_KIND = "llm";
 
 /**
- * Add 9Router's normalized model metadata extensions to an OpenAI model object.
+ * Add zRouter's normalized model metadata extensions to an OpenAI model object.
  * Standard OpenAI fields remain unchanged; clients that understand the extensions
  * can discover modalities, limits, reasoning support, and valid effort levels.
  */

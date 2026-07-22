@@ -52,13 +52,13 @@ describe("model alias management", () => {
         id: "openai/gpt-5.6-sol",
         object: "model",
         owned_by: "openai",
-        "x-9router-target": "cx/gpt-5.6-sol",
+        "x-zrouter-target": "cx/gpt-5.6-sol",
       },
       {
         id: "sol",
         object: "model",
         owned_by: "alias",
-        "x-9router-target": "cx/gpt-5.6-sol",
+        "x-zrouter-target": "cx/gpt-5.6-sol",
       },
     ]);
   });
@@ -76,7 +76,7 @@ describe("model alias management", () => {
       object: "model",
       owned_by: "openai",
       capabilities: ["codex"],
-      "x-9router-target": "cx/gpt-5.4",
+      "x-zrouter-target": "cx/gpt-5.4",
     });
   });
 
