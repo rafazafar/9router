@@ -25,16 +25,18 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const [tailscaleEnabled, setTailscaleEnabled] = useState(false);
   const [tailscaleUrl, setTailscaleUrl] = useState("");
   const [apiKeys, setApiKeys] = useState([]);
+  const [discoveredModels, setDiscoveredModels] = useState(null);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const [provRes, settingsRes, tunnelRes, keysRes] = await Promise.all([
+        const [provRes, settingsRes, tunnelRes, keysRes, modelsRes] = await Promise.all([
           fetch("/api/providers"),
           fetch("/api/settings"),
           fetch("/api/tunnel/status"),
           fetch("/api/keys"),
+          fetch("/api/v1/models", { cache: "no-store" }),
         ]);
         if (!mounted) return;
         if (provRes.ok) {
@@ -56,6 +58,13 @@ export default function ToolDetailClient({ toolId, machineId }) {
           const data = await keysRes.json();
           setApiKeys(data.keys || []);
         }
+        if (modelsRes.ok) {
+          const data = await modelsRes.json();
+          setDiscoveredModels((data.data || []).map((model) => ({
+            value: model.id,
+            label: model.id,
+          })));
+        }
       } catch (error) {
         console.log("Error loading tool data:", error);
       } finally {
@@ -68,6 +77,8 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const getActiveProviders = () => connections.filter(c => c.isActive !== false);
 
   const getAllAvailableModels = () => {
+    if (discoveredModels) return discoveredModels;
+
     const activeProviders = getActiveProviders();
     const models = [];
     const seenModels = new Set();

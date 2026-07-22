@@ -29,6 +29,7 @@ export default function ModelSelectModal({
   activeProviders = [],
   title = "Select Model",
   modelAliases = {},
+  availableModels = [],
   kindFilter = null,
   addedModelValues = [],
   closeOnSelect = true,
@@ -336,6 +337,17 @@ export default function ModelSelectModal({
       }
     });
 
+    for (const model of availableModels) {
+      const value = model?.value;
+      if (typeof value !== "string" || !value.includes("/")) continue;
+      const slash = value.indexOf("/");
+      const alias = value.slice(0, slash);
+      const modelId = value.slice(slash + 1);
+      const group = Object.values(groups).find((entry) => entry.alias === alias);
+      if (!group || group.models.some((entry) => entry.value === value)) continue;
+      group.models.push({ id: modelId, name: model.label || modelId, value, isCustom: true });
+    }
+
     // Filter out disabled models per provider (disabled keyed by storage alias OR providerId)
     Object.entries(groups).forEach(([providerId, group]) => {
       const aliasKey = getProviderAlias(providerId);
@@ -349,7 +361,7 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, availableModels]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
@@ -575,6 +587,10 @@ ModelSelectModal.propTypes = {
   ),
   title: PropTypes.string,
   modelAliases: PropTypes.object,
+  availableModels: PropTypes.arrayOf(PropTypes.shape({
+    value: PropTypes.string.isRequired,
+    label: PropTypes.string,
+  })),
   kindFilter: PropTypes.string,
   addedModelValues: PropTypes.arrayOf(PropTypes.string),
   closeOnSelect: PropTypes.bool,

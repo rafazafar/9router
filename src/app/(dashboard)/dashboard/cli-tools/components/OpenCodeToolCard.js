@@ -478,6 +478,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
         selectedModel={null}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
+        availableModels={availableModels}
         addedModelValues={selectedModels}
         closeOnSelect={false}
         title="Add Model for OpenCode"
@@ -490,6 +491,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
         selectedModel={subagentModel}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
+        availableModels={availableModels}
         title="Select Subagent Model for OpenCode"
       />
 
