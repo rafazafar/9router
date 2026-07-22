@@ -1,3 +1,10 @@
+# v0.6.7 (2026-07-22)
+
+## Changes
+- **Branding**: rename 9Router → zRouter (packages, CLI bin, data dir `~/.zrouter`, default API key `sk_zrouter`)
+- **Version**: bump to 0.6.7
+- **UI**: remove Donate button from header
+
 # v0.5.30 (2026-07-10)
 
 ## Features

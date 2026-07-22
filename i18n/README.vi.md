@@ -1258,7 +1258,7 @@ Tài liệu tham khảo kiến trúc đầy đủ: [`docs/ARCHITECTURE.md`](../d
 ## 📧 Hỗ trợ
 
 - **Website**: [zrouter.com](https://zrouter.com)
-- **GitHub**: [github.com/decolua/9](https://github.com/decolua/zrouter)
+- **GitHub**: [github.com/decolua/zrouter](https://github.com/decolua/zrouter)
 - **Issues**: [github.com/decolua/zrouter/issues](https://github.com/decolua/zrouter/issues)
 
 ---

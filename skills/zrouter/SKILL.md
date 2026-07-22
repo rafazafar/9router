@@ -1,6 +1,6 @@
 ---
 name: zrouter
-description: Entry point for zRouter — local/remote AI gateway with OpenAI-compatible REST for chat, image, TTS, embeddings, web search, web fetch. Use when the user mentions zRouter, NINEROUTER_URL, or wants AI without writing provider boilerplate. This skill covers setup + indexes capability skills; fetch the relevant capability SKILL.md from the URLs below when needed.
+description: Entry point for zRouter — local/remote AI gateway with OpenAI-compatible REST for chat, image, TTS, embeddings, web search, web fetch. Use when the user mentions zRouter, ZROUTER_URL, or wants AI without writing provider boilerplate. This skill covers setup + indexes capability skills; fetch the relevant capability SKILL.md from the URLs below when needed.
 ---
 
 # zRouter
@@ -10,24 +10,24 @@ Local/remote AI gateway exposing OpenAI-compatible REST. One key, many providers
 ## Setup
 
 ```bash
-export NINEROUTER_URL="http://localhost:20128"      # or VPS / tunnel URL
-export NINEROUTER_KEY="sk-..."                      # from Dashboard → Keys (only if requireApiKey=true)
+export ZROUTER_URL="http://localhost:20128"      # or VPS / tunnel URL
+export ZROUTER_KEY="sk-..."                      # from Dashboard → Keys (only if requireApiKey=true)
 ```
 
-All requests: `${NINEROUTER_URL}/v1/...` with header `Authorization: Bearer ${NINEROUTER_KEY}` (omit if auth disabled).
+All requests: `${ZROUTER_URL}/v1/...` with header `Authorization: Bearer ${ZROUTER_KEY}` (omit if auth disabled).
 
-Verify: `curl $NINEROUTER_URL/api/health` → `{"ok":true}`
+Verify: `curl $ZROUTER_URL/api/health` → `{"ok":true}`
 
 ## Discover models
 
 ```bash
-curl $NINEROUTER_URL/v1/models                  # chat/LLM (default)
-curl $NINEROUTER_URL/v1/models/image            # image-gen
-curl $NINEROUTER_URL/v1/models/tts              # text-to-speech
-curl $NINEROUTER_URL/v1/models/embedding        # embeddings
-curl $NINEROUTER_URL/v1/models/web              # web search + fetch (entries have `kind` field)
-curl $NINEROUTER_URL/v1/models/stt              # speech-to-text
-curl $NINEROUTER_URL/v1/models/image-to-text    # vision
+curl $ZROUTER_URL/v1/models                  # chat/LLM (default)
+curl $ZROUTER_URL/v1/models/image            # image-gen
+curl $ZROUTER_URL/v1/models/tts              # text-to-speech
+curl $ZROUTER_URL/v1/models/embedding        # embeddings
+curl $ZROUTER_URL/v1/models/web              # web search + fetch (entries have `kind` field)
+curl $ZROUTER_URL/v1/models/stt              # speech-to-text
+curl $ZROUTER_URL/v1/models/image-to-text    # vision
 ```
 
 Use `data[].id` as `model` field in requests. Combos appear with `owned_by:"combo"`.
@@ -56,6 +56,6 @@ When the user needs a specific capability, fetch that skill's `SKILL.md` from it
 
 ## Errors
 
-- 401 → set/refresh `NINEROUTER_KEY` (Dashboard → Keys)
+- 401 → set/refresh `ZROUTER_KEY` (Dashboard → Keys)
 - 400 `Invalid model format` → check `model` exists in `/v1/models/<kind>`
 - 503 `All accounts unavailable` → wait `retry-after` or add another provider account

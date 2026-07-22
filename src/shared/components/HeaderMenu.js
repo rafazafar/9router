@@ -38,6 +38,7 @@ export default function HeaderMenu({ onLogout }) {
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { toggleTheme, isDark } = useTheme();
   const menuRef = useRef(null);
 
@@ -51,6 +52,13 @@ export default function HeaderMenu({ onLogout }) {
     setIsShuttingDown(false);
     setShutdownOpen(false);
   };
+
+  useEffect(() => {
+    fetch("/api/auth/status")
+      .then((res) => res.json())
+      .then((data) => setIsAdmin(data?.authenticated && data?.user?.role === "admin"))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -89,12 +97,14 @@ export default function HeaderMenu({ onLogout }) {
               label="Theme"
               onClick={() => { toggleTheme(); close(); }}
             />
-            <MenuItem
-              icon="power_settings_new"
-              label="Shutdown"
-              danger
-              onClick={() => { close(); setShutdownOpen(true); }}
-            />
+            {isAdmin && (
+              <MenuItem
+                icon="power_settings_new"
+                label="Shutdown"
+                danger
+                onClick={() => { close(); setShutdownOpen(true); }}
+              />
+            )}
             <MenuItem
               icon="logout"
               label="Logout"
@@ -106,17 +116,19 @@ export default function HeaderMenu({ onLogout }) {
       </div>
 
       <ChangelogModal isOpen={changelogOpen} onClose={() => setChangelogOpen(false)} />
-      <ConfirmModal
-        isOpen={shutdownOpen}
-        onClose={() => setShutdownOpen(false)}
-        onConfirm={handleShutdown}
-        title="Close Proxy"
-        message="Are you sure you want to close the proxy server?"
-        confirmText="Close"
-        cancelText="Cancel"
-        variant="danger"
-        loading={isShuttingDown}
-      />
+      {isAdmin && (
+        <ConfirmModal
+          isOpen={shutdownOpen}
+          onClose={() => setShutdownOpen(false)}
+          onConfirm={handleShutdown}
+          title="Close Proxy"
+          message="Are you sure you want to close the proxy server?"
+          confirmText="Close"
+          cancelText="Cancel"
+          variant="danger"
+          loading={isShuttingDown}
+        />
+      )}
     </>
   );
 }

@@ -25,6 +25,7 @@ export default function ProfilePage() {
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [settings, setSettings] = useState({ fallbackStrategy: "fill-first" });
   const [loading, setLoading] = useState(true);
   const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
@@ -61,6 +62,13 @@ export default function ProfilePage() {
   useEffect(() => {
     setLocale(getLocaleFromCookie());
   }, [langOpen]);
+
+  useEffect(() => {
+    fetch("/api/auth/status")
+      .then((res) => res.json())
+      .then((data) => setIsAdmin(data?.authenticated && data?.user?.role === "admin"))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -1103,15 +1111,17 @@ export default function ProfilePage() {
 
         {/* Account actions */}
         <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            variant="outline"
-            fullWidth
-            icon="power_settings_new"
-            onClick={() => setShutdownOpen(true)}
-            className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
-          >
-            Shutdown
-          </Button>
+          {isAdmin && (
+            <Button
+              variant="outline"
+              fullWidth
+              icon="power_settings_new"
+              onClick={() => setShutdownOpen(true)}
+              className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
+            >
+              Shutdown
+            </Button>
+          )}
           <Button
             variant="outline"
             fullWidth
@@ -1137,17 +1147,19 @@ export default function ProfilePage() {
           setLocale(next);
         }}
       />
-      <ConfirmModal
-        isOpen={shutdownOpen}
-        onClose={() => setShutdownOpen(false)}
-        onConfirm={handleShutdown}
-        title="Close Proxy"
-        message="Are you sure you want to close the proxy server?"
-        confirmText="Close"
-        cancelText="Cancel"
-        variant="danger"
-        loading={isShuttingDown}
-      />
+      {isAdmin && (
+        <ConfirmModal
+          isOpen={shutdownOpen}
+          onClose={() => setShutdownOpen(false)}
+          onConfirm={handleShutdown}
+          title="Close Proxy"
+          message="Are you sure you want to close the proxy server?"
+          confirmText="Close"
+          cancelText="Cancel"
+          variant="danger"
+          loading={isShuttingDown}
+        />
+      )}
 
       <Modal
         isOpen={dbAuth.open}
