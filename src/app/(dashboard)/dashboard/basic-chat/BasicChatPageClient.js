@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
-import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import { getProviderAlias, isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -113,15 +113,42 @@ function getProviderLabel(connection) {
   return connection?.name || humanize(connection?.provider || connection?.id || "provider");
 }
 
+function modelRequestPrefix(connection) {
+  const providerId = connection?.provider || connection?.id;
+  const isCompatible = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
+  if (isCompatible) {
+    const prefix = connection?.providerSpecificData?.prefix;
+    if (typeof prefix === "string" && prefix.trim()) return prefix.trim();
+    return providerId;
+  }
+  return getProviderAlias(providerId) || providerId;
+}
+
 function normalizeStaticModel(model, connection) {
   if (!model?.id) return null;
+  const prefix = modelRequestPrefix(connection);
   return {
-    id: `${connection.provider}/${model.id}`,
-    requestModel: `${connection.provider}/${model.id}`,
+    id: `${prefix}/${model.id}`,
+    requestModel: `${prefix}/${model.id}`,
     name: model.name || model.id,
     providerId: connection.provider,
     providerName: getProviderLabel(connection),
     source: "static",
+  };
+}
+
+function normalizeCustomModel(model, connection) {
+  if (!model?.id) return null;
+  const type = model.kind || model.type || "llm";
+  if (type !== "llm" && type !== "imageToText") return null;
+  const prefix = modelRequestPrefix(connection);
+  return {
+    id: `${prefix}/${model.id}`,
+    requestModel: `${prefix}/${model.id}`,
+    name: model.name || model.id,
+    providerId: connection.provider,
+    providerName: getProviderLabel(connection),
+    source: "custom",
   };
 }
 
@@ -232,6 +259,10 @@ export default function BasicChatPageClient() {
           return;
         }
 
+        const customRes = await fetch("/api/models/custom", { cache: "no-store" });
+        const customData = customRes.ok ? await customRes.json().catch(() => ({})) : {};
+        const customModels = Array.isArray(customData.models) ? customData.models : [];
+
         const providerMap = new Map();
 
         for (const connection of connections) {
@@ -242,6 +273,8 @@ export default function BasicChatPageClient() {
             : isAnthropicCompatibleProvider(providerId)
               ? "anthropic-compatible"
               : providerId;
+          const staticAlias = getProviderAlias(providerId) || providerId;
+          const outputAlias = modelRequestPrefix(connection);
 
           if (!providerMap.has(providerId)) {
             providerMap.set(providerId, {
@@ -262,6 +295,15 @@ export default function BasicChatPageClient() {
             .map((model) => normalizeStaticModel(model, connection))
             .filter(Boolean);
           group.models.push(...staticModels);
+
+          const providerCustoms = customModels
+            .filter((m) => {
+              const alias = m?.providerAlias;
+              return alias === staticAlias || alias === outputAlias || alias === providerId;
+            })
+            .map((model) => normalizeCustomModel(model, connection))
+            .filter(Boolean);
+          group.models.push(...providerCustoms);
         }
 
         const liveResults = await Promise.all(

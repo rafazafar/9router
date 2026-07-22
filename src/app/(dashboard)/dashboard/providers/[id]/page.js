@@ -1293,7 +1293,36 @@ export default function ProviderDetailPage() {
           {sharedConnections.length ? renderMemberConnections(sharedConnections, true) : <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-text-muted">No shared connections for this provider.</p>}
         </Card>
 
-        {models.length > 0 && <Card><h2 className="mb-4 text-lg font-semibold">Available models</h2><div className="flex flex-wrap gap-2">{models.filter((model) => !getModelKind(model) || getModelKind(model) === "llm").map((model) => <code key={model.id} className="rounded-lg border border-border px-3 py-2 text-xs">{providerDisplayAlias}/{model.id}</code>)}</div></Card>}
+        {(() => {
+          const baseLlm = models.filter((model) => !getModelKind(model) || getModelKind(model) === "llm");
+          const customLlm = getProviderCustomModelRows({
+            customModels,
+            modelAliases: {},
+            providerAlias: providerStorageAlias,
+            builtInModels: models,
+            type: "llm",
+            includeLegacyAliases: false,
+          });
+          const seen = new Set(baseLlm.map((m) => m.id));
+          const memberModels = [
+            ...baseLlm.map((m) => ({ id: m.id, label: `${providerDisplayAlias}/${m.id}` })),
+            ...customLlm.filter((m) => !seen.has(m.id)).map((m) => ({
+              id: m.id,
+              label: `${providerDisplayAlias}/${m.id}`,
+            })),
+          ];
+          if (!memberModels.length) return null;
+          return (
+            <Card>
+              <h2 className="mb-4 text-lg font-semibold">Available models</h2>
+              <div className="flex flex-wrap gap-2">
+                {memberModels.map((model) => (
+                  <code key={model.id} className="rounded-lg border border-border px-3 py-2 text-xs">{model.label}</code>
+                ))}
+              </div>
+            </Card>
+          );
+        })()}
 
         {providerId === "kiro" ? <KiroOAuthWrapper isOpen={showOAuthModal} providerInfo={providerInfo} onSuccess={handleOAuthSuccess} onClose={() => setShowOAuthModal(false)} />
           : providerId === "cursor" ? <CursorAuthModal isOpen={showOAuthModal} onSuccess={handleOAuthSuccess} onClose={() => setShowOAuthModal(false)} />
