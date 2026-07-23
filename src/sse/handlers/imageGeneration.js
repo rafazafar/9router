@@ -96,7 +96,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId, allowedConnectionIds: apiKeyPolicy?.allowedConnectionIds });
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId, allowedConnectionIds: apiKeyPolicy?.allowedConnectionIds, userId: apiKeyPolicy?.ownerUserId || null });
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

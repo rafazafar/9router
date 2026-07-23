@@ -40,4 +40,6 @@ export {
   deleteApiKey,
   validateApiKey,
   isCloudEnabled,
+  getConnectionPriorityOverrides,
+  setConnectionPriorityOverride,
 } from "@/lib/localDb";

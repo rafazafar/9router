@@ -187,6 +187,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               </span>
             )}
             <span className="text-xs text-text-muted">#{connection.priority}</span>
+            {connection.myPriority != null && (
+              <Tooltip content="Your personal priority override — this account is used only after all your non-overridden accounts">
+                <span className="text-xs font-medium text-primary">You: last #{connection.myPriority}</span>
+              </Tooltip>
+            )}
             {connection.globalPriority && (
               <span className="text-xs text-text-muted">Auto: {connection.globalPriority}</span>
             )}
@@ -293,6 +298,7 @@ ConnectionRow.propTypes = {
     isActive: PropTypes.bool,
     lastError: PropTypes.string,
     priority: PropTypes.number,
+    myPriority: PropTypes.number,
     globalPriority: PropTypes.number,
   }).isRequired,
   proxyPools: PropTypes.arrayOf(PropTypes.shape({

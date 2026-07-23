@@ -22,6 +22,10 @@ export {
 } from "./repos/usersRepo.js";
 export { getConnectionGrants, grantConnection, revokeConnectionGrant, replaceConnectionGrants } from "./repos/grantsRepo.js";
 export {
+  getConnectionPriorityOverrides, setConnectionPriorityOverride,
+  cleanupConnectionPriorityOverrides, applyPriorityOverrides,
+} from "./repos/connectionPriorityOverridesRepo.js";
+export {
   TOKEN_SAVER_SETTING_KEYS, getUserTokenSaverOverrides,
   getEffectiveUserTokenSaverSettings, updateUserTokenSaverSettings,
 } from "./repos/userSettingsRepo.js";

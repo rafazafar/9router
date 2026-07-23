@@ -5,6 +5,8 @@ import {
   getProxyPoolById,
   updateProviderConnection,
   deleteProviderConnection,
+  getConnectionPriorityOverrides,
+  setConnectionPriorityOverride,
 } from "@/models";
 import { authorizationErrorResponse, requireConnectionAccess, requireUser } from "@/lib/auth/authorization";
 
@@ -91,8 +93,10 @@ async function normalizeProxyPoolUpdate(proxyPoolIdInput) {
   return { hasProxyPoolField: true, proxyPoolId };
 }
 
-function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, hasProxyPoolField) {
-  return existing !== undefined || incoming !== undefined || hasLegacyProxy || hasProxyPoolField;
+// Shared (non-owned) connections: members/admins may only set their own
+// priority override, nothing else.
+function canManageSelfPriorityOnly(body = {}) {
+  return Object.keys(body).every((key) => key === "myPriority");
 }
 
 // GET /api/providers/[id] - Get single connection
@@ -133,6 +137,7 @@ export async function PUT(request, { params }) {
     const {
       name,
       priority,
+      myPriority,
       globalPriority,
       defaultModel,
       isActive,
@@ -147,8 +152,17 @@ export async function PUT(request, { params }) {
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
-    if (!canManageProviderConnection(principal, existing)) {
+    const canManage = canManageProviderConnection(principal, existing);
+    if (!canManage && !canManageSelfPriorityOnly(body)) {
       return NextResponse.json({ error: "Shared connections cannot be modified" }, { status: 403 });
+    }
+    if (myPriority !== undefined) {
+      if (existing.ownerUserId === principal.userId) {
+        return NextResponse.json({ error: "Use priority for your own connections" }, { status: 400 });
+      }
+      if (myPriority !== null && (!Number.isInteger(myPriority) || myPriority < 1)) {
+        return NextResponse.json({ error: "myPriority must be a positive integer or null" }, { status: 400 });
+      }
     }
     if (principal.role !== "admin" && globalPriority !== undefined) {
       return NextResponse.json({ error: "Global priority requires administrator access" }, { status: 403 });
@@ -199,12 +213,9 @@ export async function PUT(request, { params }) {
     if (principal.role === "admin" && lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;
 
     if (
-      shouldMergeProviderSpecificData(
-        existing.providerSpecificData,
-        providerSpecificData,
-        proxyConfig.hasAnyProxyField,
-        proxyPoolResult.hasProxyPoolField
-      )
+      providerSpecificData !== undefined ||
+      proxyConfig.hasAnyProxyField ||
+      proxyPoolResult.hasProxyPoolField
     ) {
       updateData.providerSpecificData = {
         ...(existing.providerSpecificData || {}),
@@ -226,7 +237,10 @@ export async function PUT(request, { params }) {
       }
     }
 
-    const updated = await updateProviderConnection(id, updateData);
+    if (myPriority !== undefined) {
+      await setConnectionPriorityOverride(principal.userId, id, myPriority);
+    }
+    const updated = Object.keys(updateData).length > 0 ? await updateProviderConnection(id, updateData) : existing;
 
     // Hide sensitive fields
     const result = redactSecrets(updated);
@@ -235,6 +249,7 @@ export async function PUT(request, { params }) {
     delete result.refreshToken;
     delete result.idToken;
     result.providerSpecificData = sanitizeProviderSpecificData(updated.providerSpecificData, principal);
+    result.myPriority = (await getConnectionPriorityOverrides(principal.userId)).get(id) ?? null;
 
     return NextResponse.json({ connection: result });
   } catch (error) {

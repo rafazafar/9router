@@ -33,6 +33,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Effective order for the current user: rows with a myPriority override sink
+// below all owner-priority rows (mirrors applyPriorityOverrides on the server).
+function getEffectivePriority(conn) {
+  return conn.myPriority != null ? 1000 + conn.myPriority : (conn.priority ?? 999);
+}
+
 export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -299,7 +305,9 @@ export default function ProviderDetailPage() {
       const proxyPoolsData = proxyPoolsRes?.ok ? await proxyPoolsRes.json() : {};
       const settingsData = settingsRes?.ok ? await settingsRes.json() : {};
       if (connectionsRes.ok) {
-        const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
+        const filtered = (connectionsData.connections || [])
+          .filter(c => c.provider === providerId)
+          .sort((a, b) => getEffectivePriority(a) - getEffectivePriority(b));
         setConnections(filtered);
       }
       if (proxyPoolsRes?.ok) {
@@ -812,6 +820,70 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Effective order for the current user: rows with a myPriority override sink
+  // below all owner-priority rows (mirrors applyPriorityOverrides on the server).
+  const handleSwapMyPriority = async (conn, direction) => {
+    const ordered = [...connections].sort((a, b) => getEffectivePriority(a) - getEffectivePriority(b));
+    const index = ordered.findIndex((c) => c.id === conn.id);
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (index === -1 || swapIndex < 0 || swapIndex >= ordered.length) return;
+    const neighbor = ordered[swapIndex];
+
+    let myNewValue;
+    let neighborNewValue; // undefined = leave as-is
+    if (direction === "down") {
+      if (neighbor.myPriority != null) {
+        // Swap with another overridden row
+        myNewValue = neighbor.myPriority;
+        neighborNewValue = conn.myPriority ?? neighbor.myPriority + 1;
+      } else {
+        // Crossing the boundary into the overridden (deprioritized) zone:
+        // put this connection at the start of that zone
+        myNewValue = 1;
+      }
+    } else {
+      if (conn.myPriority === 1) {
+        // At the top of the overridden zone, next overridden row takes its place
+        myNewValue = null; // clear → back to owner priority
+        if (neighbor.myPriority != null) neighborNewValue = 1;
+      } else if (neighbor.myPriority != null) {
+        myNewValue = neighbor.myPriority;
+        neighborNewValue = conn.myPriority;
+      } else {
+        return; // already at the top of the overridden zone
+      }
+    }
+
+    // Optimistic update
+    setConnections((prev) => prev
+      .map((c) => {
+        if (c.id === conn.id) return { ...c, myPriority: myNewValue };
+        if (c.id === neighbor.id && neighborNewValue !== undefined) return { ...c, myPriority: neighborNewValue };
+        return c;
+      })
+      .sort((a, b) => getEffectivePriority(a) - getEffectivePriority(b)));
+
+    try {
+      const puts = [fetch(`/api/providers/${conn.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ myPriority: myNewValue }),
+      })];
+      if (neighborNewValue !== undefined && neighbor.ownership === "shared") {
+        puts.push(fetch(`/api/providers/${neighbor.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ myPriority: neighborNewValue }),
+        }));
+      }
+      await Promise.all(puts);
+      await fetchConnections();
+    } catch (error) {
+      console.log("Error swapping my priority:", error);
+      await fetchConnections();
+    }
+  };
+
   const selectedConnections = connections.filter((conn) => selectedConnectionIds.includes(conn.id));
   const allSelected = connections.length > 0 && selectedConnectionIds.length === connections.length;
 
@@ -932,8 +1004,12 @@ export default function ProviderDetailPage() {
                 isOAuth={isOAuth}
                 isFirst={index === 0}
                 isLast={index === connections.length - 1}
-                onMoveUp={() => handleSwapPriority(index, index - 1)}
-                onMoveDown={() => handleSwapPriority(index, index + 1)}
+                onMoveUp={() => conn.canManage === false
+                  ? handleSwapMyPriority(conn, "up")
+                  : handleSwapPriority(index, index - 1)}
+                onMoveDown={() => conn.canManage === false
+                  ? handleSwapMyPriority(conn, "down")
+                  : handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
                   on: autoPing.connections[conn.id] === true,

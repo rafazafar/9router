@@ -156,7 +156,7 @@ async function handleSingleProviderFetch(body, providerInput, apiKeyPolicy, apiK
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(providerId, excludeConnectionIds, null, { allowedConnectionIds: apiKeyPolicy?.allowedConnectionIds });
+    const credentials = await getProviderCredentials(providerId, excludeConnectionIds, null, { allowedConnectionIds: apiKeyPolicy?.allowedConnectionIds, userId: apiKeyPolicy?.ownerUserId || null });
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {
