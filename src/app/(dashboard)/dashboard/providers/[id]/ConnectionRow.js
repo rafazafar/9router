@@ -6,7 +6,7 @@ import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, readOnly = false, ownershipLabel = null, allowReorder = true }) {
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onToggleUseLast = null, oneByOneStatus = null, autoPing = null, readOnly = false, ownershipLabel = null, allowReorder = true }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -188,7 +188,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             )}
             <span className="text-xs text-text-muted">#{connection.priority}</span>
             {connection.myPriority != null && (
-              <Tooltip content="Your personal priority override — this account is used only after all your non-overridden accounts">
+              <Tooltip text="Your personal priority override. This account is used only after all non-overridden accounts.">
                 <span className="text-xs font-medium text-primary">You: last #{connection.myPriority}</span>
               </Tooltip>
             )}
@@ -222,6 +222,17 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
       </div>
       {!readOnly && <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
         <div className="grid flex-1 grid-cols-3 gap-1 sm:flex sm:flex-none">
+          {onToggleUseLast && (
+            <Tooltip text={connection.myPriority != null ? "Restore this account to its owner's priority in your routing" : "Use this member account only after all your non-overridden accounts"}>
+              <button
+                onClick={onToggleUseLast}
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${connection.myPriority != null ? "text-primary" : "text-text-muted hover:text-primary"}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">low_priority</span>
+                <span className="text-[10px] leading-tight">{connection.myPriority != null ? "Use normal" : "Use last"}</span>
+              </button>
+            </Tooltip>
+          )}
           {/* Proxy button with inline dropdown */}
           {(proxyPools || []).length > 0 && (
             <div className="relative" ref={proxyDropdownRef}>
@@ -317,6 +328,7 @@ ConnectionRow.propTypes = {
   onUpdateProxy: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
+  onToggleUseLast: PropTypes.func,
   oneByOneStatus: PropTypes.shape({
     state: PropTypes.string,
     error: PropTypes.string,

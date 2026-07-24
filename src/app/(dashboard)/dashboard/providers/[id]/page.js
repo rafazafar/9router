@@ -884,6 +884,31 @@ export default function ProviderDetailPage() {
     }
   };
 
+  const handleToggleUseLast = async (conn) => {
+    const nextPriority = conn.myPriority == null
+      ? connections.reduce((max, connection) => Math.max(max, connection.myPriority ?? 0), 0) + 1
+      : null;
+
+    setConnections((prev) => prev
+      .map((connection) => connection.id === conn.id
+        ? { ...connection, myPriority: nextPriority }
+        : connection)
+      .sort((a, b) => getEffectivePriority(a) - getEffectivePriority(b)));
+
+    try {
+      const response = await fetch(`/api/providers/${conn.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ myPriority: nextPriority }),
+      });
+      if (!response.ok) throw new Error("Failed to update personal priority");
+      await fetchConnections();
+    } catch (error) {
+      console.log("Error updating personal priority:", error);
+      await fetchConnections();
+    }
+  };
+
   const selectedConnections = connections.filter((conn) => selectedConnectionIds.includes(conn.id));
   const allSelected = connections.length > 0 && selectedConnectionIds.length === connections.length;
 
@@ -1004,12 +1029,13 @@ export default function ProviderDetailPage() {
                 isOAuth={isOAuth}
                 isFirst={index === 0}
                 isLast={index === connections.length - 1}
-                onMoveUp={() => conn.canManage === false
+                onMoveUp={() => conn.ownership === "shared"
                   ? handleSwapMyPriority(conn, "up")
                   : handleSwapPriority(index, index - 1)}
-                onMoveDown={() => conn.canManage === false
+                onMoveDown={() => conn.ownership === "shared"
                   ? handleSwapMyPriority(conn, "down")
                   : handleSwapPriority(index, index + 1)}
+                onToggleUseLast={conn.ownership === "shared" ? () => handleToggleUseLast(conn) : null}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
                   on: autoPing.connections[conn.id] === true,
