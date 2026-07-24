@@ -1027,6 +1027,9 @@ export default function ProviderDetailPage() {
                 connection={conn}
                 proxyPools={proxyPools}
                 isOAuth={isOAuth}
+                ownershipLabel={conn.ownership === "shared"
+                  ? `Owned by ${conn.ownerDisplayName || "member"}`
+                  : "Owned by you"}
                 isFirst={index === 0}
                 isLast={index === connections.length - 1}
                 onMoveUp={() => conn.ownership === "shared"
@@ -1358,7 +1361,7 @@ export default function ProviderDetailPage() {
             isLast
             allowReorder={false}
             readOnly={shared}
-            ownershipLabel={shared ? `Shared by ${connection.ownerDisplayName || "administrator"}` : "Owned by you"}
+            ownershipLabel={shared ? `Shared by ${connection.ownerDisplayName || "administrator"}` : null}
             onToggleActive={(isActive) => handleUpdateConnectionStatus(connection.id, isActive)}
             onUpdateProxy={async () => {}}
             onEdit={() => { setSelectedConnection(connection); setShowEditModal(true); }}
