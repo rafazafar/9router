@@ -6,7 +6,7 @@ import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onToggleUseLast = null, oneByOneStatus = null, autoPing = null, readOnly = false, ownershipLabel = null, allowReorder = true }) {
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, readOnly = false, ownershipLabel = null, allowReorder = true }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -139,7 +139,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     <div className={`group flex min-w-0 flex-col gap-3 rounded-lg p-2 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02] sm:flex-row sm:items-center sm:justify-between ${connection.isActive === false ? "opacity-60" : ""}`}>
       <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
         {/* Priority arrows */}
-        {!readOnly && allowReorder && <div className="flex shrink-0 flex-col">
+        {allowReorder && <div className="flex shrink-0 flex-col">
           <button
             onClick={onMoveUp}
             disabled={isFirst}
@@ -186,12 +186,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 {connection.lastError}
               </span>
             )}
-            <span className="text-xs text-text-muted">#{connection.priority}</span>
-            {connection.myPriority != null && (
-              <Tooltip text="Your personal priority override. This account is used only after all non-overridden accounts.">
-                <span className="text-xs font-medium text-primary">You: last #{connection.myPriority}</span>
-              </Tooltip>
-            )}
+            <span className="text-xs text-text-muted">#{connection.personalPriority || connection.priority}</span>
             {connection.globalPriority && (
               <span className="text-xs text-text-muted">Auto: {connection.globalPriority}</span>
             )}
@@ -222,17 +217,6 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
       </div>
       {!readOnly && <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
         <div className="grid flex-1 grid-cols-3 gap-1 sm:flex sm:flex-none">
-          {onToggleUseLast && (
-            <Tooltip text={connection.myPriority != null ? "Restore this account to its owner's priority in your routing" : "Use this member account only after all your non-overridden accounts"}>
-              <button
-                onClick={onToggleUseLast}
-                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${connection.myPriority != null ? "text-primary" : "text-text-muted hover:text-primary"}`}
-              >
-                <span className="material-symbols-outlined text-[18px]">low_priority</span>
-                <span className="text-[10px] leading-tight">{connection.myPriority != null ? "Use normal" : "Use last"}</span>
-              </button>
-            </Tooltip>
-          )}
           {/* Proxy button with inline dropdown */}
           {(proxyPools || []).length > 0 && (
             <div className="relative" ref={proxyDropdownRef}>
@@ -309,7 +293,7 @@ ConnectionRow.propTypes = {
     isActive: PropTypes.bool,
     lastError: PropTypes.string,
     priority: PropTypes.number,
-    myPriority: PropTypes.number,
+    personalPriority: PropTypes.number,
     globalPriority: PropTypes.number,
   }).isRequired,
   proxyPools: PropTypes.arrayOf(PropTypes.shape({
@@ -328,7 +312,6 @@ ConnectionRow.propTypes = {
   onUpdateProxy: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
-  onToggleUseLast: PropTypes.func,
   oneByOneStatus: PropTypes.shape({
     state: PropTypes.string,
     error: PropTypes.string,

@@ -10,7 +10,7 @@ import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
-import { getUserById, getUsers, getConnectionPriorityOverrides } from "@/lib/db/index.js";
+import { applyUserProviderConnectionOrder, getUserById, getUsers, hasUserProviderConnectionOrder } from "@/lib/db/index.js";
 
 export const dynamic = "force-dynamic";
 
@@ -95,11 +95,23 @@ async function normalizeProxyPoolId(proxyPoolId) {
 export async function GET(request) {
   try {
     const principal = await requireUser(request);
-    const [connections, users, myOverrides] = await Promise.all([
+    const [rawConnections, users] = await Promise.all([
       getAccessibleProviderConnections(principal),
       principal.role === "admin" ? getUsers() : Promise.resolve([]),
-      getConnectionPriorityOverrides(principal.userId),
     ]);
+    const providers = [...new Set(rawConnections.map((connection) => connection.provider))];
+    const personalOrderFlags = new Map(await Promise.all(providers.map(async (provider) => [
+      provider,
+      await hasUserProviderConnectionOrder(principal.userId, provider),
+    ])));
+    const connections = [];
+    for (const provider of providers) {
+      connections.push(...await applyUserProviderConnectionOrder(
+        rawConnections.filter((connection) => connection.provider === provider),
+        principal.userId,
+        provider,
+      ));
+    }
     const userNames = new Map(users.map((user) => [user.id, user.displayName || user.username]));
     if (principal.role !== "admin") {
       const ownerIds = [...new Set(connections.map((connection) => connection.ownerUserId).filter((id) => id && id !== principal.userId))];
@@ -131,7 +143,8 @@ export async function GET(request) {
         idToken: undefined,
         canManage: principal.role === "admin" || c.ownerUserId === principal.userId,
         ownership: c.ownerUserId === principal.userId ? "owned" : "shared",
-        myPriority: myOverrides.get(c.id) ?? null,
+        personalPriority: connections.filter((connection) => connection.provider === c.provider).findIndex((connection) => connection.id === c.id) + 1,
+        hasPersonalOrder: personalOrderFlags.get(c.provider) || false,
         ownerDisplayName: c.ownerUserId === principal.userId
           ? (principal.user.displayName || principal.user.username)
           : (userNames.get(c.ownerUserId) || null),

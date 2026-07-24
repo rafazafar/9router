@@ -30,7 +30,15 @@ export async function grantConnection(connectionId, userId, grantedByUserId) {
 
 export async function revokeConnectionGrant(connectionId, userId) {
   const db = await getAdapter();
-  return (db.run(`DELETE FROM connectionGrants WHERE connectionId = ? AND userId = ?`, [connectionId, userId])?.changes || 0) > 0;
+  let revoked = false;
+  db.transaction(() => {
+    const connection = db.get(`SELECT provider FROM providerConnections WHERE id = ?`, [connectionId]);
+    revoked = (db.run(`DELETE FROM connectionGrants WHERE connectionId = ? AND userId = ?`, [connectionId, userId])?.changes || 0) > 0;
+    if (revoked && connection) {
+      db.run(`DELETE FROM userProviderConnectionOrder WHERE userId = ? AND provider = ?`, [userId, connection.provider]);
+    }
+  });
+  return revoked;
 }
 
 export async function replaceConnectionGrants(userId, connectionIds, grantedByUserId) {
@@ -55,6 +63,10 @@ export async function replaceConnectionGrants(userId, connectionIds, grantedByUs
       if (connection.ownerUserId !== userId) desired.push(connectionId);
     }
 
+    const affectedProviders = db.all(
+      `SELECT DISTINCT provider FROM providerConnections WHERE id IN (SELECT connectionId FROM connectionGrants WHERE userId = ?)`,
+      [userId],
+    ).map((row) => row.provider);
     db.run(`DELETE FROM connectionGrants WHERE userId = ?`, [userId]);
     const createdAt = new Date().toISOString();
     for (const connectionId of desired) {
@@ -62,6 +74,9 @@ export async function replaceConnectionGrants(userId, connectionIds, grantedByUs
         `INSERT INTO connectionGrants(connectionId, userId, grantedByUserId, createdAt) VALUES(?, ?, ?, ?)`,
         [connectionId, userId, grantedByUserId, createdAt]
       );
+    }
+    for (const provider of affectedProviders) {
+      db.run(`DELETE FROM userProviderConnectionOrder WHERE userId = ? AND provider = ?`, [userId, provider]);
     }
     result = desired;
   });

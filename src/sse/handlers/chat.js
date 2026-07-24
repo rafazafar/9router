@@ -190,7 +190,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
       allowedConnectionIds: apiKeyPolicy?.allowedConnectionIds,
-      userId: apiKeyPolicy?.ownerUserId || null,
+      userId: apiKeyPolicy?.ownerUserId,
     });
 
     // All accounts unavailable

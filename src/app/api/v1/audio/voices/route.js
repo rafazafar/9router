@@ -35,6 +35,7 @@ export async function GET(request) {
     } else {
       const credentials = await getProviderCredentials(provider, null, null, {
         allowedConnectionIds: authorization.apiKey?.allowedConnectionIds,
+        userId: authorization.apiKey?.ownerUserId,
       });
       if (!credentials || credentials.allRateLimited) {
         return Response.json({ error: { message: `No permitted ${provider} connection` } }, { status: 404, headers: CORS });

@@ -19,6 +19,11 @@ export {
   updateProxyPool,
   deleteProxyPool,
   deleteProviderConnectionsByProvider,
+  getUserProviderConnectionOrder,
+  hasUserProviderConnectionOrder,
+  applyUserProviderConnectionOrder,
+  setUserProviderConnectionOrder,
+  resetUserProviderConnectionOrder,
   getCombos,
   getComboById,
   getComboByName,
@@ -40,6 +45,4 @@ export {
   deleteApiKey,
   validateApiKey,
   isCloudEnabled,
-  getConnectionPriorityOverrides,
-  setConnectionPriorityOverride,
 } from "@/lib/localDb";

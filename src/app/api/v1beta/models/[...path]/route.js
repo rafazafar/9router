@@ -245,6 +245,7 @@ async function forwardGeminiNativeRequest(request, body, model, action) {
   while (true) {
     const credentials = await getProviderCredentials("gemini", excludeConnectionIds, modelId, {
       allowedConnectionIds: authorization.policy?.allowedConnectionIds,
+      userId: authorization.policy?.ownerUserId,
     });
     if (!credentials || credentials.allRateLimited) {
       console.log(`[GEMINI_NATIVE] exhausted model=${modelId} status=${lastStatus || Number(credentials?.lastErrorCode) || 503} error=${lastError || credentials?.lastError || "No active credentials for provider: gemini"}`);

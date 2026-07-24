@@ -209,6 +209,41 @@ describe("multi-user provider routes", () => {
     expect((await bobResponse.json()).connections).toEqual([]);
   });
 
+  it("returns owner labels and saves one isolated routing order", async () => {
+    const aliceAnthropic = await db.createProviderConnection({
+      provider: "anthropic",
+      authType: "apikey",
+      name: "alice-anthropic",
+      apiKey: "alice-anthropic-secret",
+      ownerUserId: alice.id,
+    });
+    const providersRoute = await import("@/app/api/providers/route.js");
+    const orderRoute = await import("@/app/api/providers/order/route.js");
+
+    const adminResponse = await providersRoute.GET(await requestFor(admin, "http://localhost/api/providers"));
+    const adminConnections = (await adminResponse.json()).connections;
+    expect(adminConnections.find((connection) => connection.id === aliceAnthropic.id)).toMatchObject({
+      ownership: "shared",
+      ownerDisplayName: alice.displayName,
+    });
+
+    const response = await orderRoute.PUT(await requestFor(alice, "http://localhost/api/providers/order", {
+      method: "PUT",
+      body: JSON.stringify({ provider: "anthropic", connectionIds: [aliceAnthropic.id, adminConnection.id] }),
+    }));
+    expect(response.status).toBe(200);
+
+    const aliceResponse = await providersRoute.GET(await requestFor(alice, "http://localhost/api/providers"));
+    const aliceAnthropicConnections = (await aliceResponse.json()).connections.filter((connection) => connection.provider === "anthropic");
+    expect(aliceAnthropicConnections.map((connection) => connection.id)).toEqual([aliceAnthropic.id, adminConnection.id]);
+    expect(aliceAnthropicConnections.map((connection) => connection.personalPriority)).toEqual([1, 2]);
+    expect(aliceAnthropicConnections.every((connection) => connection.hasPersonalOrder)).toBe(true);
+
+    const resetResponse = await orderRoute.DELETE(await requestFor(alice, "http://localhost/api/providers/order?provider=anthropic", { method: "DELETE" }));
+    expect(resetResponse.status).toBe(200);
+    expect(await db.hasUserProviderConnectionOrder(alice.id, "anthropic")).toBe(false);
+  });
+
   it("rejects shared mutation and member-controlled infrastructure fields", async () => {
     const route = await import("@/app/api/providers/[id]/route.js");
     const sharedResponse = await route.PUT(

@@ -269,7 +269,7 @@ export async function deleteProviderConnection(id) {
     const row = db.get(`SELECT provider, ownerUserId FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     db.run(`DELETE FROM connectionGrants WHERE connectionId = ?`, [id]);
-    db.run(`DELETE FROM connectionPriorityOverrides WHERE connectionId = ?`, [id]);
+    db.run(`DELETE FROM userProviderConnectionOrder WHERE connectionId = ?`, [id]);
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
     reorderInTx(db, row.provider, row.ownerUserId);
     ok = true;
@@ -287,10 +287,7 @@ export async function deleteProviderConnectionsByProvider(providerId) {
       `DELETE FROM connectionGrants WHERE connectionId IN (SELECT id FROM providerConnections WHERE provider = ?)`,
       [providerId]
     );
-    db.run(
-      `DELETE FROM connectionPriorityOverrides WHERE connectionId IN (SELECT id FROM providerConnections WHERE provider = ?)`,
-      [providerId]
-    );
+    db.run(`DELETE FROM userProviderConnectionOrder WHERE provider = ?`, [providerId]);
     db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
   });
   return deleted;

@@ -33,18 +33,13 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Effective order for the current user: rows with a myPriority override sink
-// below all owner-priority rows (mirrors applyPriorityOverrides on the server).
-function getEffectivePriority(conn) {
-  return conn.myPriority != null ? 1000 + conn.myPriority : (conn.priority ?? 999);
-}
-
 export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const providerId = params.id;
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
+  const [savingPersonalOrder, setSavingPersonalOrder] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
@@ -305,9 +300,7 @@ export default function ProviderDetailPage() {
       const proxyPoolsData = proxyPoolsRes?.ok ? await proxyPoolsRes.json() : {};
       const settingsData = settingsRes?.ok ? await settingsRes.json() : {};
       if (connectionsRes.ok) {
-        const filtered = (connectionsData.connections || [])
-          .filter(c => c.provider === providerId)
-          .sort((a, b) => getEffectivePriority(a) - getEffectivePriority(b));
+        const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
         setConnections(filtered);
       }
       if (proxyPoolsRes?.ok) {
@@ -796,116 +789,43 @@ export default function ProviderDetailPage() {
   };
 
   const handleSwapPriority = async (index1, index2) => {
-    // Optimistic update state
+    if (savingPersonalOrder || index2 < 0 || index2 >= connections.length) return;
+    const previousConnections = connections;
     const newConnections = [...connections];
     [newConnections[index1], newConnections[index2]] = [newConnections[index2], newConnections[index1]];
-    setConnections(newConnections);
+    const rankedConnections = newConnections.map((connection, index) => ({
+      ...connection,
+      personalPriority: index + 1,
+      hasPersonalOrder: true,
+    }));
+    setConnections(rankedConnections);
+    setSavingPersonalOrder(true);
 
     try {
-      await Promise.all([
-        fetch(`/api/providers/${newConnections[index1].id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index1 }),
-        }),
-        fetch(`/api/providers/${newConnections[index2].id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index2 }),
-        }),
-      ]);
+      const res = await fetch("/api/providers/order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: providerId, connectionIds: newConnections.map((connection) => connection.id) }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to save personal order");
     } catch (error) {
       console.log("Error swapping priority:", error);
-      await fetchConnections();
+      setConnections(previousConnections);
+    } finally {
+      setSavingPersonalOrder(false);
     }
   };
 
-  // Effective order for the current user: rows with a myPriority override sink
-  // below all owner-priority rows (mirrors applyPriorityOverrides on the server).
-  const handleSwapMyPriority = async (conn, direction) => {
-    const ordered = [...connections].sort((a, b) => getEffectivePriority(a) - getEffectivePriority(b));
-    const index = ordered.findIndex((c) => c.id === conn.id);
-    const swapIndex = direction === "up" ? index - 1 : index + 1;
-    if (index === -1 || swapIndex < 0 || swapIndex >= ordered.length) return;
-    const neighbor = ordered[swapIndex];
-
-    let myNewValue;
-    let neighborNewValue; // undefined = leave as-is
-    if (direction === "down") {
-      if (neighbor.myPriority != null) {
-        // Swap with another overridden row
-        myNewValue = neighbor.myPriority;
-        neighborNewValue = conn.myPriority ?? neighbor.myPriority + 1;
-      } else {
-        // Crossing the boundary into the overridden (deprioritized) zone:
-        // put this connection at the start of that zone
-        myNewValue = 1;
-      }
-    } else {
-      if (conn.myPriority === 1) {
-        // At the top of the overridden zone, next overridden row takes its place
-        myNewValue = null; // clear → back to owner priority
-        if (neighbor.myPriority != null) neighborNewValue = 1;
-      } else if (neighbor.myPriority != null) {
-        myNewValue = neighbor.myPriority;
-        neighborNewValue = conn.myPriority;
-      } else {
-        return; // already at the top of the overridden zone
-      }
-    }
-
-    // Optimistic update
-    setConnections((prev) => prev
-      .map((c) => {
-        if (c.id === conn.id) return { ...c, myPriority: myNewValue };
-        if (c.id === neighbor.id && neighborNewValue !== undefined) return { ...c, myPriority: neighborNewValue };
-        return c;
-      })
-      .sort((a, b) => getEffectivePriority(a) - getEffectivePriority(b)));
-
+  const handleResetPersonalOrder = async () => {
+    setSavingPersonalOrder(true);
     try {
-      const puts = [fetch(`/api/providers/${conn.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ myPriority: myNewValue }),
-      })];
-      if (neighborNewValue !== undefined && neighbor.ownership === "shared") {
-        puts.push(fetch(`/api/providers/${neighbor.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ myPriority: neighborNewValue }),
-        }));
-      }
-      await Promise.all(puts);
+      const res = await fetch(`/api/providers/order?provider=${encodeURIComponent(providerId)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to reset personal order");
       await fetchConnections();
     } catch (error) {
-      console.log("Error swapping my priority:", error);
-      await fetchConnections();
-    }
-  };
-
-  const handleToggleUseLast = async (conn) => {
-    const nextPriority = conn.myPriority == null
-      ? connections.reduce((max, connection) => Math.max(max, connection.myPriority ?? 0), 0) + 1
-      : null;
-
-    setConnections((prev) => prev
-      .map((connection) => connection.id === conn.id
-        ? { ...connection, myPriority: nextPriority }
-        : connection)
-      .sort((a, b) => getEffectivePriority(a) - getEffectivePriority(b)));
-
-    try {
-      const response = await fetch(`/api/providers/${conn.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ myPriority: nextPriority }),
-      });
-      if (!response.ok) throw new Error("Failed to update personal priority");
-      await fetchConnections();
-    } catch (error) {
-      console.log("Error updating personal priority:", error);
-      await fetchConnections();
+      console.log("Error resetting personal order:", error);
+    } finally {
+      setSavingPersonalOrder(false);
     }
   };
 
@@ -1027,18 +947,10 @@ export default function ProviderDetailPage() {
                 connection={conn}
                 proxyPools={proxyPools}
                 isOAuth={isOAuth}
-                ownershipLabel={conn.ownership === "shared"
-                  ? `Owned by ${conn.ownerDisplayName || "member"}`
-                  : "Owned by you"}
                 isFirst={index === 0}
                 isLast={index === connections.length - 1}
-                onMoveUp={() => conn.ownership === "shared"
-                  ? handleSwapMyPriority(conn, "up")
-                  : handleSwapPriority(index, index - 1)}
-                onMoveDown={() => conn.ownership === "shared"
-                  ? handleSwapMyPriority(conn, "down")
-                  : handleSwapPriority(index, index + 1)}
-                onToggleUseLast={conn.ownership === "shared" ? () => handleToggleUseLast(conn) : null}
+                onMoveUp={() => handleSwapPriority(index, index - 1)}
+                onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
                   on: autoPing.connections[conn.id] === true,
@@ -1069,6 +981,7 @@ export default function ProviderDetailPage() {
                 }}
                 onDelete={() => handleDelete(conn.id)}
                 oneByOneStatus={oneByOneResults[conn.id] || null}
+                ownershipLabel={conn.ownership === "shared" ? `Owned by ${conn.ownerDisplayName || "member"}` : null}
               />
             </div>
           </div>
@@ -1347,27 +1260,30 @@ export default function ProviderDetailPage() {
         </div>
       );
     }
-    const ownConnections = connections.filter((connection) => connection.ownership === "owned");
-    const sharedConnections = connections.filter((connection) => connection.ownership === "shared");
-    const renderMemberConnections = (items, shared) => (
+    const renderMemberConnections = () => (
       <div className="flex flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
-        {items.map((connection) => (
+        {connections.map((connection, index) => {
+          const shared = connection.ownership === "shared";
+          return (
           <ConnectionRow
             key={connection.id}
             connection={connection}
             proxyPools={[]}
             isOAuth={isOAuth}
-            isFirst
-            isLast
-            allowReorder={false}
+            isFirst={index === 0}
+            isLast={index === connections.length - 1}
+            allowReorder={!savingPersonalOrder}
             readOnly={shared}
-            ownershipLabel={shared ? `Shared by ${connection.ownerDisplayName || "administrator"}` : null}
+            ownershipLabel={shared ? `Owned by ${connection.ownerDisplayName || "administrator"}` : null}
+            onMoveUp={() => handleSwapPriority(index, index - 1)}
+            onMoveDown={() => handleSwapPriority(index, index + 1)}
             onToggleActive={(isActive) => handleUpdateConnectionStatus(connection.id, isActive)}
             onUpdateProxy={async () => {}}
             onEdit={() => { setSelectedConnection(connection); setShowEditModal(true); }}
             onDelete={() => handleDelete(connection.id)}
           />
-        ))}
+          );
+        })}
       </div>
     );
 
@@ -1384,18 +1300,14 @@ export default function ProviderDetailPage() {
 
         <Card>
           <div className="mb-4 flex items-center justify-between gap-3">
-            <div><h2 className="text-lg font-semibold">My connections</h2><p className="text-xs text-text-muted">You can edit, reauthenticate, disable, or delete these connections.</p></div>
+            <div><h2 className="text-lg font-semibold">Your routing order</h2><p className="text-xs text-text-muted">Move any account. Changes affect only your requests.</p></div>
             <div className="flex gap-2">
+              {connections.some((connection) => connection.hasPersonalOrder) && <Button size="sm" variant="ghost" onClick={handleResetPersonalOrder} disabled={savingPersonalOrder}>Reset order</Button>}
               {hasDualAuthModes && <Button size="sm" icon="lock" variant="secondary" onClick={triggerOAuthConnection}>{oauthConnectionLabel}</Button>}
               <Button size="sm" icon="add" onClick={hasDualAuthModes ? triggerApiKeyConnection : triggerAddConnection}>Add connection</Button>
             </div>
           </div>
-          {ownConnections.length ? renderMemberConnections(ownConnections, false) : <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-text-muted">No connections owned by you yet.</p>}
-        </Card>
-
-        <Card>
-          <div className="mb-4"><h2 className="text-lg font-semibold">Shared with me</h2><p className="text-xs text-text-muted">Shared credentials are hidden and managed by their owner.</p></div>
-          {sharedConnections.length ? renderMemberConnections(sharedConnections, true) : <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-text-muted">No shared connections for this provider.</p>}
+          {connections.length ? renderMemberConnections() : <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-text-muted">No connections available for this provider.</p>}
         </Card>
 
         {(() => {
@@ -1598,8 +1510,14 @@ export default function ProviderDetailPage() {
       ) : (
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg font-semibold">Connections</h2>
+            <div>
+              <h2 className="text-lg font-semibold">Your routing order</h2>
+              <p className="text-xs text-text-muted">Move any account. Changes affect only your requests.</p>
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              {connections.some((connection) => connection.hasPersonalOrder) && (
+                <Button size="sm" variant="ghost" onClick={handleResetPersonalOrder} disabled={savingPersonalOrder}>Reset order</Button>
+              )}
               {connections.length > 0 && proxyPools.length > 0 && (
                 <Button
                   size="sm"

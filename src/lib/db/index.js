@@ -22,9 +22,10 @@ export {
 } from "./repos/usersRepo.js";
 export { getConnectionGrants, grantConnection, revokeConnectionGrant, replaceConnectionGrants } from "./repos/grantsRepo.js";
 export {
-  getConnectionPriorityOverrides, setConnectionPriorityOverride,
-  cleanupConnectionPriorityOverrides, applyPriorityOverrides,
-} from "./repos/connectionPriorityOverridesRepo.js";
+  getUserProviderConnectionOrder, hasUserProviderConnectionOrder,
+  applyUserProviderConnectionOrder, setUserProviderConnectionOrder,
+  resetUserProviderConnectionOrder,
+} from "./repos/userProviderOrderRepo.js";
 export {
   TOKEN_SAVER_SETTING_KEYS, getUserTokenSaverOverrides,
   getEffectiveUserTokenSaverSettings, updateUserTokenSaverSettings,
@@ -106,6 +107,7 @@ export async function exportDb() {
       sessionVersion: r.sessionVersion, createdAt: r.createdAt, updatedAt: r.updatedAt,
     })),
     connectionGrants: db.all(`SELECT * FROM connectionGrants`),
+    userProviderConnectionOrder: db.all(`SELECT * FROM userProviderConnectionOrder ORDER BY userId, provider, priority`),
     userSettings: db.all(`SELECT * FROM userSettings`).map((r) => ({ userId: r.userId, data: parseJson(r.data, {}), updatedAt: r.updatedAt })),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     modelAliases: {},
@@ -133,15 +135,17 @@ export async function importDb(payload) {
     importedUsers.push(liveUsers.get("admin"));
   }
   const importedUserIds = new Set(importedUsers.map((user) => user.id));
+  const importedOrderPriorities = new Set();
 
   db.transaction(() => {
     // Wipe all tables (keep _meta)
     db.run(`DELETE FROM settings`);
+    db.run(`DELETE FROM userProviderConnectionOrder`);
+    db.run(`DELETE FROM connectionGrants`);
     db.run(`DELETE FROM providerConnections`);
     db.run(`DELETE FROM providerNodes`);
     db.run(`DELETE FROM proxyPools`);
     db.run(`DELETE FROM apiKeys`);
-    db.run(`DELETE FROM connectionGrants`);
     db.run(`DELETE FROM userSettings`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
@@ -202,6 +206,25 @@ export async function importDb(payload) {
       db.run(
         `INSERT OR REPLACE INTO connectionGrants(connectionId, userId, grantedByUserId, createdAt) VALUES(?, ?, ?, ?)`,
         [g.connectionId, g.userId, g.grantedByUserId || "admin", g.createdAt || new Date().toISOString()]
+      );
+    }
+    for (const item of payload.userProviderConnectionOrder || []) {
+      if (!importedUserIds.has(item.userId)) continue;
+      const priorityKey = `${item.userId}\u0000${item.provider}\u0000${item.priority}`;
+      const connection = db.get(`SELECT provider, ownerUserId FROM providerConnections WHERE id = ?`, [item.connectionId]);
+      const user = db.get(`SELECT role, status FROM users WHERE id = ?`, [item.userId]);
+      const granted = db.get(`SELECT 1 AS found FROM connectionGrants WHERE connectionId = ? AND userId = ?`, [item.connectionId, item.userId]);
+      if (
+        !connection || !user || user.status !== "active"
+        || connection.provider !== item.provider
+        || (!Number.isInteger(item.priority) || item.priority < 1)
+        || importedOrderPriorities.has(priorityKey)
+        || (user.role !== "admin" && connection.ownerUserId !== item.userId && !granted)
+      ) continue;
+      importedOrderPriorities.add(priorityKey);
+      db.run(
+        `INSERT OR REPLACE INTO userProviderConnectionOrder(userId, provider, connectionId, priority) VALUES(?, ?, ?, ?)`,
+        [item.userId, item.provider, item.connectionId, item.priority]
       );
     }
     for (const s of payload.userSettings || []) {

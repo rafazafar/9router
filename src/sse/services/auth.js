@@ -1,4 +1,4 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools, reserveApiKeyRequest, getConnectionPriorityOverrides, applyPriorityOverrides } from "@/lib/localDb";
+import { applyUserProviderConnectionOrder, getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools, reserveApiKeyRequest } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
@@ -23,6 +23,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
   const preferredConnectionId = options?.preferredConnectionId || null;
   const allowedConnectionIds = options?.allowedConnectionIds;
+  const userId = options?.userId || null;
   // Acquire mutex to prevent race conditions
   const currentMutex = selectionMutex;
   let resolveMutex;
@@ -63,10 +64,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
 
     const allConnections = await getProviderConnections({ provider: providerId, isActive: true });
-    const connections = allowedConnectionIds !== undefined
+    const permittedConnections = allowedConnectionIds !== undefined
       ? allConnections.filter((connection) => allowedConnectionIds.includes(connection.id))
       : allConnections;
+    const orderedConnections = await applyUserProviderConnectionOrder(permittedConnections, userId, providerId);
+    const connections = orderedConnections.map((connection, index) => ({ ...connection, _routingPriority: index + 1 }));
     log.debug("AUTH", `${provider} | permitted connections: ${connections.length}/${allConnections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
+
     if (connections.length === 0) {
       log.warn("AUTH", `No credentials for ${provider}`);
       return null;
@@ -114,17 +118,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const providerOverride = (settings.providerStrategies || {})[providerId] || {};
     const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
 
-    // Per-user priority overrides (e.g. admin deprioritizing member-owned accounts)
-    let orderedConnections = availableConnections;
-    if (options?.userId) {
-      const overrides = await getConnectionPriorityOverrides(options.userId);
-      if (overrides.size > 0) orderedConnections = applyPriorityOverrides(availableConnections, overrides);
-    }
-
     let connection;
     // Pin to preferred connection if specified and available
     if (preferredConnectionId) {
-      connection = orderedConnections.find((c) => c.id === preferredConnectionId);
+      connection = availableConnections.find((c) => c.id === preferredConnectionId);
       if (connection) {
         log.info("AUTH", `${provider} | pinned to ${connection.id?.slice(0, 8)} (${connection.name || connection.email || "unnamed"})`);
       }
@@ -135,8 +132,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 
       // Sort by lastUsed (most recent first) to find current candidate
-      const byRecency = [...orderedConnections].sort((a, b) => {
-        if (!a.lastUsedAt && !b.lastUsedAt) return 0;
+      const byRecency = [...availableConnections].sort((a, b) => {
+        if (!a.lastUsedAt && !b.lastUsedAt) return (a._routingPriority || a.priority || 999) - (b._routingPriority || b.priority || 999);
         if (!a.lastUsedAt) return 1;
         if (!b.lastUsedAt) return -1;
         return new Date(b.lastUsedAt) - new Date(a.lastUsedAt);
@@ -155,8 +152,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         });
       } else {
         // Pick the least recently used (excluding current if possible)
-        const sortedByOldest = [...orderedConnections].sort((a, b) => {
-          if (!a.lastUsedAt && !b.lastUsedAt) return 0;
+        const sortedByOldest = [...availableConnections].sort((a, b) => {
+          if (!a.lastUsedAt && !b.lastUsedAt) return (a._routingPriority || a.priority || 999) - (b._routingPriority || b.priority || 999);
           if (!a.lastUsedAt) return -1;
           if (!b.lastUsedAt) return 1;
           return new Date(a.lastUsedAt) - new Date(b.lastUsedAt);
@@ -171,8 +168,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         });
       }
     } else {
-      // Default: fill-first (ordered by effective priority — owner priority + per-user overrides)
-      connection = orderedConnections[0];
+      // Default: fill-first (already sorted by priority in getProviderConnections)
+      connection = availableConnections[0];
     }
 
     const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
