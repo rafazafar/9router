@@ -247,6 +247,12 @@ describe("multi-user database", () => {
     const chart = await db.getChartData("7d", { userId: member.id });
     expect(chart).toHaveLength(7);
     expect(chart.reduce((sum, bucket) => sum + bucket.tokens, 0)).toBe(7);
+    const minuteChart = await db.getChartData("1m", { userId: member.id });
+    expect(minuteChart).toHaveLength(12);
+    expect(minuteChart.reduce((sum, bucket) => sum + bucket.tokens, 0)).toBe(7);
+    expect(await db.getChartData("5m", { userId: member.id })).toHaveLength(10);
+    expect(await db.getChartData("1h", { userId: member.id })).toHaveLength(12);
+    expect((await db.getUserUsageStats(member.id, "1m")).totalRequests).toBe(1);
     expect(await db.getRecentLogs(20, { userId: member.id })).toEqual(expect.arrayContaining([expect.stringContaining("FAILED 429")]));
   });
 });

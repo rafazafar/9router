@@ -83,11 +83,17 @@ function CollapsibleSection({ title, children, defaultOpen = false, icon = null 
 }
 
 function getCachedTokens(tokens) {
-  return tokens?.cached_tokens || tokens?.cache_read_input_tokens || 0;
+  return tokens?.cached_tokens ||
+    tokens?.cache_read_input_tokens ||
+    tokens?.prompt_tokens_details?.cached_tokens ||
+    tokens?.input_tokens_details?.cached_tokens ||
+    0;
 }
 
 function getCacheCreationTokens(tokens) {
-  return tokens?.cache_creation_input_tokens || 0;
+  return tokens?.cache_creation_input_tokens ||
+    tokens?.prompt_tokens_details?.cache_creation_tokens ||
+    0;
 }
 
 function getInputTokens(tokens) {
@@ -249,12 +255,13 @@ export default function RequestDetailsTab() {
 
       <Card padding="none">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px]">
+          <table className="w-full min-w-[1040px]">
             <thead>
               <tr className="border-b border-black/5 dark:border-white/5">
                 <th className="text-left p-4 text-sm font-semibold text-text-main">Timestamp</th>
                 <th className="text-left p-4 text-sm font-semibold text-text-main">Model</th>
                 <th className="text-left p-4 text-sm font-semibold text-text-main">Provider</th>
+                <th className="text-left p-4 text-sm font-semibold text-text-main">Provider Account</th>
                 <th className="text-right p-4 text-sm font-semibold text-text-main">Input Tokens</th>
                 <th className="text-right p-4 text-sm font-semibold text-text-main">Cached</th>
                 <th className="text-right p-4 text-sm font-semibold text-text-main">Cache Creation</th>
@@ -266,7 +273,7 @@ export default function RequestDetailsTab() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
+                  <td colSpan="10" className="p-8 text-center text-text-muted">
                     <div className="flex items-center justify-center gap-2">
                       <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
                       Loading...
@@ -275,7 +282,7 @@ export default function RequestDetailsTab() {
                 </tr>
               ) : details.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
+                  <td colSpan="10" className="p-8 text-center text-text-muted">
                     No request details found
                   </td>
                 </tr>
@@ -296,6 +303,9 @@ export default function RequestDetailsTab() {
                          {getProviderName(detail.provider, providerNameCache)}
                        </span>
                      </td>
+                    <td className="max-w-[180px] truncate p-4 text-sm text-text-main" title={detail.accountName || detail.connectionId || ""}>
+                      {detail.accountName || detail.connectionId || "—"}
+                    </td>
                     <td className="p-4 text-sm text-text-main text-right font-mono">
                       {getInputTokens(detail.tokens).toLocaleString()}
                     </td>
@@ -364,6 +374,12 @@ export default function RequestDetailsTab() {
                  <span className="text-text-muted">Provider:</span>{" "}
                  <span className="text-text-main font-medium">{getProviderName(selectedDetail.provider, providerNameCache)}</span>
                </div>
+              <div>
+                <span className="text-text-muted">Provider Account:</span>{" "}
+                <span className="break-all text-text-main font-medium">
+                  {selectedDetail.accountName || selectedDetail.connectionId || "—"}
+                </span>
+              </div>
               <div>
                 <span className="text-text-muted">Model:</span>{" "}
                 <span className="text-text-main font-mono">{selectedDetail.model}</span>

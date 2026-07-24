@@ -193,6 +193,9 @@ const TABLE_OPTIONS = [
 ];
 
 const PERIODS = [
+  { value: "1m", label: "1m" },
+  { value: "5m", label: "5m" },
+  { value: "1h", label: "1h" },
   { value: "today", label: "Today" },
   { value: "24h", label: "24h" },
   { value: "7d", label: "7D" },

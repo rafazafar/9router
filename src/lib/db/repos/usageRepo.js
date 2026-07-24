@@ -12,7 +12,7 @@ function maskApiKey(key) {
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
-const PERIOD_MS = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 5184000000 };
+const PERIOD_MS = { "1m": 60000, "5m": 300000, "1h": 3600000, "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 5184000000 };
 
 // In-memory state shared across Next.js modules
 if (!global._pendingRequests) global._pendingRequests = { byModel: {}, byAccount: {} };
@@ -522,7 +522,7 @@ export async function getUsageStats(period = "all") {
     }
   }
 
-  const useDailySummary = period !== "24h" && period !== "today";
+  const useDailySummary = !["1m", "5m", "1h", "24h", "today"].includes(period);
 
   if (useDailySummary) {
     const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
@@ -643,18 +643,19 @@ export async function getUsageStats(period = "all") {
       if (stats.byEndpoint[endpointKey] && new Date(ts) > new Date(stats.byEndpoint[endpointKey].lastUsed)) stats.byEndpoint[endpointKey].lastUsed = ts;
     }
   } else {
-    // 24h / today: live history
+    // Sub-day periods and today use live history.
+    const now = new Date();
     let cutoff;
     if (period === "today") {
-      const startOfDay = new Date();
+      const startOfDay = new Date(now);
       startOfDay.setHours(0, 0, 0, 0);
       cutoff = startOfDay.toISOString();
     } else {
-      cutoff = new Date(Date.now() - PERIOD_MS["24h"]).toISOString();
+      cutoff = new Date(now.getTime() - PERIOD_MS[period]).toISOString();
     }
     const filtered = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?`,
-      [cutoff]
+      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?`,
+      [cutoff, now.toISOString()]
     );
 
     for (const r of filtered) {
@@ -742,6 +743,40 @@ export async function getChartData(period = "7d", filter = {}) {
   const now = Date.now();
   const userClause = filter.userId ? " AND userId = ?" : "";
   const userParams = filter.userId ? [filter.userId] : [];
+
+  const shortPeriodConfig = {
+    "1m": { bucketCount: 12, bucketMs: 5000, showSeconds: true },
+    "5m": { bucketCount: 10, bucketMs: 30000, showSeconds: true },
+    "1h": { bucketCount: 12, bucketMs: 300000, showSeconds: false },
+  };
+  const shortConfig = shortPeriodConfig[period];
+  if (shortConfig) {
+    const { bucketCount, bucketMs, showSeconds } = shortConfig;
+    const startTime = now - bucketCount * bucketMs;
+    const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: showSeconds ? "2-digit" : undefined,
+      hour12: false,
+    });
+    const buckets = Array.from({ length: bucketCount }, (_, i) => ({
+      label: labelFn(startTime + i * bucketMs),
+      tokens: 0,
+      cost: 0,
+    }));
+    const rows = db.all(
+      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?${userClause}`,
+      [new Date(startTime).toISOString(), ...userParams]
+    );
+    for (const row of rows) {
+      const timestamp = new Date(row.timestamp).getTime();
+      if (timestamp < startTime || timestamp > now) continue;
+      const index = Math.min(Math.floor((timestamp - startTime) / bucketMs), bucketCount - 1);
+      buckets[index].tokens += (row.promptTokens || 0) + (row.completionTokens || 0);
+      buckets[index].cost += row.cost || 0;
+    }
+    return buckets;
+  }
 
   if (period === "today") {
     const bucketCount = 24;

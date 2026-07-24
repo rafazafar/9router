@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getChartData } from "@/lib/usageDb";
 import { authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
 
-const VALID_PERIODS = new Set(["today", "24h", "7d", "30d", "60d"]);
+const VALID_PERIODS = new Set(["1m", "5m", "1h", "today", "24h", "7d", "30d", "60d"]);
 
 export async function GET(request) {
   try {

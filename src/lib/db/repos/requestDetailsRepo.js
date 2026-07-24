@@ -166,10 +166,32 @@ export async function getRequestDetails(filter = {}) {
   const offset = (page - 1) * pageSize;
 
   const rows = db.all(
-    `SELECT data FROM requestDetails ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
+    `SELECT data, connectionId FROM requestDetails ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
   );
-  const details = rows.map((r) => parseJson(r.data, {}));
+  const accessibleConnectionIds = filter.accessibleConnectionIds;
+  const connectionRows = accessibleConnectionIds
+    ? (accessibleConnectionIds.length > 0
+      ? db.all(
+        `SELECT id, name, email FROM providerConnections WHERE id IN (${accessibleConnectionIds.map(() => "?").join(", ")})`,
+        accessibleConnectionIds
+      )
+      : [])
+    : db.all(`SELECT id, name, email FROM providerConnections`);
+  const connectionMap = Object.fromEntries(
+    connectionRows
+      .map((connection) => [connection.id, connection.name || connection.email || connection.id])
+  );
+  const details = rows.map((row) => {
+    const detail = parseJson(row.data, {});
+    const connectionId = row.connectionId;
+    if (!connectionId) return detail;
+    return {
+      ...detail,
+      connectionId,
+      accountName: connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`,
+    };
+  });
 
   return {
     details,

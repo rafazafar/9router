@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/usageDb";
+import { getAccessibleProviderConnections } from "@/lib/db/index.js";
 import { authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
 
 /**
@@ -50,6 +51,10 @@ export async function GET(request) {
     if (endDate) filter.endDate = endDate;
     if (principal.role !== "admin") filter.userId = principal.userId;
     else if (requestedUserId) filter.userId = requestedUserId;
+    if (principal.role !== "admin") {
+      const connections = await getAccessibleProviderConnections(principal);
+      filter.accessibleConnectionIds = connections.map((connection) => connection.id);
+    }
     
     const result = await getRequestDetails(filter);
     

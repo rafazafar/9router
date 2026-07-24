@@ -87,6 +87,36 @@ describe("request details — tab crash-risk cases", () => {
     expect(res.pagination.pageSize).toBe(9999);
   });
 
+  it("returns provider account name for a stored connection", async () => {
+    adapter.run(
+      `INSERT INTO providerConnections(id, provider, authType, name, email, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ["conn-details-1", "openai", "api-key", "Production Account", "owner@example.com", 1, "{}", new Date().toISOString(), new Date().toISOString()]
+    );
+    await saveDetail({
+      id: "account-1", provider: "openai", model: "gpt-4", connectionId: "conn-details-1",
+      status: "ok", tokens: {}, request: {}, response: {},
+    });
+
+    const result = await db.getRequestDetails({ connectionId: "conn-details-1" });
+
+    expect(result.details[0]).toMatchObject({
+      connectionId: "conn-details-1",
+      accountName: "Production Account",
+    });
+  });
+
+  it("does not resolve account names outside the accessible connection set", async () => {
+    const result = await db.getRequestDetails({
+      connectionId: "conn-details-1",
+      accessibleConnectionIds: [],
+    });
+
+    expect(result.details[0]).toMatchObject({
+      connectionId: "conn-details-1",
+      accountName: "Account conn-det...",
+    });
+  });
+
   it("oversized field → stored truncated + reparseable (no circular)", async () => {
     const huge = "x".repeat(20 * 1024);
     await saveDetail({
@@ -117,16 +147,43 @@ describe("request details — tab crash-risk cases", () => {
 // Mirror of RequestDetailsTab token helpers (component is "use client",
 // helpers are not exported). Keep in sync with the component.
 function getCachedTokens(tokens) {
-  return tokens?.cached_tokens || tokens?.cache_read_input_tokens || 0;
+  return tokens?.cached_tokens ||
+    tokens?.cache_read_input_tokens ||
+    tokens?.prompt_tokens_details?.cached_tokens ||
+    tokens?.input_tokens_details?.cached_tokens ||
+    0;
 }
 function getCacheCreationTokens(tokens) {
-  return tokens?.cache_creation_input_tokens || 0;
+  return tokens?.cache_creation_input_tokens ||
+    tokens?.prompt_tokens_details?.cache_creation_tokens ||
+    0;
 }
 function getInputTokens(tokens) {
   const prompt = tokens?.prompt_tokens || tokens?.input_tokens || 0;
   const cache = getCachedTokens(tokens);
   return prompt < cache ? cache : prompt;
 }
+
+describe("request detail token helpers", () => {
+  it("reads OpenAI Chat Completions cache details", () => {
+    const tokens = {
+      prompt_tokens: 1000,
+      prompt_tokens_details: { cached_tokens: 600, cache_creation_tokens: 100 },
+    };
+
+    expect(getCachedTokens(tokens)).toBe(600);
+    expect(getCacheCreationTokens(tokens)).toBe(100);
+  });
+
+  it("reads OpenAI Responses cache details", () => {
+    const tokens = {
+      input_tokens: 1000,
+      input_tokens_details: { cached_tokens: 600 },
+    };
+
+    expect(getCachedTokens(tokens)).toBe(600);
+  });
+});
 
 describe("backupDbLite — excludes requestDetails, keeps critical data", () => {
   it("backup file omits requestDetails rows but keeps other tables", async () => {

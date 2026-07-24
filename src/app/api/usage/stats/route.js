@@ -3,7 +3,7 @@ import { getUsageStats } from "@/lib/usageDb";
 import { getUserUsageStats } from "@/lib/db/index.js";
 import { authorizationErrorResponse, requireUser } from "@/lib/auth/authorization";
 
-const VALID_PERIODS = new Set(["today", "24h", "7d", "30d", "60d", "all"]);
+const VALID_PERIODS = new Set(["1m", "5m", "1h", "today", "24h", "7d", "30d", "60d", "all"]);
 
 export const dynamic = "force-dynamic";
 
